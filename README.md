@@ -7,7 +7,7 @@
 ### Quick Install
 
 ```bash
-git clone https://github.com/yourusername/recon-it.git
+git clone https://github.com/pacman-yay/recon-it.git
 cd recon-it
 chmod +x recon-it.sh
 ./recon-it.sh --install
