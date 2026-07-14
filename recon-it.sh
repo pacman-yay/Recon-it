@@ -19,6 +19,7 @@ LOG_LEVEL="INFO"
 VERBOSE=false
 QUIET=false
 AUTO_INSTALL=false
+SKIP_INSTALL=false
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Banner
@@ -44,8 +45,8 @@ show_banner() {
     echo "    ║           ║       it's OUR tool                ║           ║"
     echo "    ║           ╚══════════════════════════════════════╝           ║"
     echo "    ║                                                              ║"
-    echo "    ║     🔍 Amass | Assetfinder | Sublist3r | Subfinder          ║"
-    echo "    ║     🌐 DNSRecon | DNSDumpster | HTTPX | WHOIS              ║"
+    echo "    ║     Amass | Assetfinder | Sublist3r | Subfinder             ║"
+    echo "    ║     DNSRecon | DNSDumpster | HTTPX | WHOIS                 ║"
     echo "    ║                                                              ║"
     echo "    ╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -54,7 +55,7 @@ show_banner() {
 # Prompt for yes/no
 prompt_yes_no() {
     local prompt="$1"
-    local default="${2:-n}"  # Default to No if not specified
+    local default="${2:-n}"
     
     while true; do
         read -p "$prompt [y/N]: " yn
@@ -62,11 +63,7 @@ prompt_yes_no() {
             [Yy]* ) return 0;;
             [Nn]* ) return 1;;
             "" ) 
-                if [[ "$default" == "y" ]]; then
-                    return 0
-                else
-                    return 1
-                fi
+                [[ "$default" == "y" ]] && return 0 || return 1
                 ;;
             * ) echo "Please answer yes or no.";;
         esac
@@ -78,7 +75,7 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Install Go if missing
+# Install Go
 install_go() {
     echo -e "${YELLOW}[!] Go not found. Required for Amass and Assetfinder.${NC}"
     if prompt_yes_no "Install Go?"; then
@@ -88,7 +85,7 @@ install_go() {
         export PATH=$PATH:/usr/local/go/bin
         echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
         rm go1.21.0.linux-amd64.tar.gz
-        echo -e "${GREEN}[+] Go installed successfully!${NC}"
+        echo -e "${GREEN}[+] Go installed!${NC}"
         return 0
     else
         echo -e "${YELLOW}[!] Skipping Go installation.${NC}"
@@ -107,7 +104,6 @@ install_amass() {
     if prompt_yes_no "Install Amass?"; then
         echo -e "${GREEN}[+] Installing Amass...${NC}"
         
-        # Try apt first (Debian/Ubuntu)
         if command_exists apt; then
             sudo apt install amass -y 2>/dev/null
             if command_exists amass; then
@@ -116,7 +112,6 @@ install_amass() {
             fi
         fi
         
-        # Install via Go
         if ! command_exists go; then
             install_go || return 1
         fi
@@ -271,7 +266,7 @@ install_dnsrecon() {
     fi
 }
 
-# Install required base packages
+# Install base packages
 install_base_packages() {
     local missing=()
     
@@ -296,10 +291,7 @@ check_and_install_dependencies() {
     echo -e "${CYAN}[*] Checking dependencies...${NC}"
     echo ""
     
-    # Install base packages first
     install_base_packages
-    
-    # Install each tool if missing
     install_subfinder
     install_httpx
     install_dnsrecon
@@ -311,13 +303,12 @@ check_and_install_dependencies() {
     echo -e "${GREEN}[+] Dependency check complete!${NC}"
     echo ""
     
-    # Show installed tools
     echo -e "${CYAN}Installed tools:${NC}"
     for tool in whois dig curl host amass assetfinder sublist3r dnsrecon subfinder httpx; do
         if command_exists $tool; then
-            echo -e "  ${GREEN}✅ $tool${NC}"
+            echo -e "  ${GREEN}OK $tool${NC}"
         else
-            echo -e "  ${RED}❌ $tool${NC}"
+            echo -e "  ${RED}MISSING $tool${NC}"
         fi
     done
     echo ""
@@ -385,63 +376,14 @@ show_help() {
     echo "  -h, --help                  Show this help"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  ./recon-it.sh -d example.com -a                    # Full scan"
-    echo "  ./recon-it.sh -d example.com --install -a          # Install + scan"
-    echo "  ./recon-it.sh -d example.com -m -t -u -s           # Subdomain tools only"
-    echo "  ./recon-it.sh -d example.com --subdomain-aggressive # Aggressive mode"
+    echo "  ./recon-it.sh --install                          # Install tools only"
+    echo "  ./recon-it.sh -d example.com -a                  # Full scan"
+    echo "  ./recon-it.sh -d example.com --install -a        # Install + scan"
+    echo "  ./recon-it.sh -d example.com -m -t -u -s         # Subdomain tools only"
 }
 
-# Logging functions
-log_message() {
-    local level=$1
-    local message=$2
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    if [[ "$QUIET" != "true" ]]; then
-        case $level in
-            "ERROR") echo -e "${RED}[ERROR] $message${NC}" >&2 ;;
-            "WARNING") echo -e "${YELLOW}[WARNING] $message${NC}" ;;
-            "INFO") [[ "$VERBOSE" == "true" ]] && echo -e "${GREEN}[INFO] $message${NC}" ;;
-            "DEBUG") [[ "$VERBOSE" == "true" ]] && echo -e "${CYAN}[DEBUG] $message${NC}" ;;
-            "SUCCESS") echo -e "${GREEN}[SUCCESS] $message${NC}" ;;
-            *) echo "$message" ;;
-        esac
-    fi
-    
-    if [[ -n "$LOG_FILE" ]]; then
-        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
-    fi
-}
-
-log_info() { log_message "INFO" "$1"; }
-log_error() { log_message "ERROR" "$1"; }
-log_warning() { log_message "WARNING" "$1"; }
-log_debug() { log_message "DEBUG" "$1"; }
-log_success() { log_message "SUCCESS" "$1"; }
-
-# Initialize logging
-init_logging() {
-    if [[ -z "$LOG_FILE" ]]; then
-        LOG_FILE="recon-it_${DOMAIN:-multi}_${TIMESTAMP}.log"
-    fi
-    
-    local log_dir=$(dirname "$LOG_FILE")
-    if [[ "$log_dir" != "." ]] && [[ ! -d "$log_dir" ]]; then
-        mkdir -p "$log_dir"
-    fi
-    
-    echo "========================================" > "$LOG_FILE"
-    echo "recon-it v3.1 - Log File" >> "$LOG_FILE"
-    echo "Started: $(date)" >> "$LOG_FILE"
-    echo "Target: ${DOMAIN:-Multiple Domains}" >> "$LOG_FILE"
-    echo "Log Level: $LOG_LEVEL" >> "$LOG_FILE"
-    echo "========================================" >> "$LOG_FILE"
-    echo "" >> "$LOG_FILE"
-}
-
-# Module functions (short versions for readability)
+# Module functions
 run_whois() {
-    log_info "Running WHOIS for $DOMAIN"
     echo -e "${GREEN}[+] WHOIS Lookup${NC}"
     echo "================================================"
     whois "$DOMAIN" 2>/dev/null | head -50 || echo "No results"
@@ -449,7 +391,6 @@ run_whois() {
 }
 
 run_dnsdumpster() {
-    log_info "Running DNSDumpster for $DOMAIN"
     echo -e "${GREEN}[+] DNSDumpster${NC}"
     echo "================================================"
     local token=$(curl -s -c /tmp/cookies.txt "https://dnsdumpster.com" | grep -oP 'csrfmiddlewaretoken" value="\K[^"]+' 2>/dev/null)
@@ -463,7 +404,6 @@ run_dnsdumpster() {
 }
 
 run_dnsrecon() {
-    log_info "Running DNSRecon for $DOMAIN"
     echo -e "${GREEN}[+] DNSRecon${NC}"
     echo "================================================"
     if command_exists dnsrecon; then
@@ -475,7 +415,6 @@ run_dnsrecon() {
 }
 
 run_subfinder() {
-    log_info "Running Subfinder for $DOMAIN"
     echo -e "${GREEN}[+] Subfinder${NC}"
     echo "================================================"
     if command_exists subfinder; then
@@ -487,7 +426,6 @@ run_subfinder() {
 }
 
 run_amass() {
-    log_info "Running Amass for $DOMAIN"
     echo -e "${GREEN}[+] Amass${NC}"
     echo "================================================"
     if command_exists amass; then
@@ -501,7 +439,6 @@ run_amass() {
 }
 
 run_assetfinder() {
-    log_info "Running Assetfinder for $DOMAIN"
     echo -e "${GREEN}[+] Assetfinder${NC}"
     echo "================================================"
     if command_exists assetfinder; then
@@ -513,7 +450,6 @@ run_assetfinder() {
 }
 
 run_sublist3r() {
-    log_info "Running Sublist3r for $DOMAIN"
     echo -e "${GREEN}[+] Sublist3r${NC}"
     echo "================================================"
     if command_exists sublist3r; then
@@ -525,7 +461,6 @@ run_sublist3r() {
 }
 
 run_httpx() {
-    log_info "Running HTTPX for $DOMAIN"
     echo -e "${GREEN}[+] HTTPX${NC}"
     echo "================================================"
     if command_exists httpx; then
@@ -587,47 +522,119 @@ main() {
     # Parse args
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -d|--domain) DOMAIN="$2"; shift 2 ;;
-            -f|--domain-list) DOMAIN_LIST="$2"; shift 2 ;;
-            -o|--output) OUTPUT_FILE="$2"; shift 2 ;;
-            -l|--log-file) LOG_FILE="$2"; shift 2 ;;
-            --log-level) LOG_LEVEL="$2"; shift 2 ;;
-            -v|--verbose) VERBOSE=true; shift ;;
-            -q|--quiet) QUIET=true; shift ;;
-            --append) APPEND=true; shift ;;
-            --json-log) JSON_LOG=true; shift ;;
-            -a|--all) RUN_ALL=true; shift ;;
-            -w|--whois) RUN_WHOIS=true; shift ;;
-            -n|--dnsdumpster) RUN_DNSDUMPSTER=true; shift ;;
-            -r|--dnsrecon) RUN_DNSRECON=true; shift ;;
-            -s|--subfinder) RUN_SUBFINDER=true; shift ;;
-            -m|--amass) RUN_AMASS=true; shift ;;
-            -t|--assetfinder) RUN_ASSETFINDER=true; shift ;;
-            -u|--sublist3r) RUN_SUBLIST3R=true; shift ;;
-            -x|--httpx) RUN_HTTPX=true; shift ;;
-            --subdomain-all) 
-                RUN_SUBFINDER=true; RUN_AMASS=true; RUN_ASSETFINDER=true; RUN_SUBLIST3R=true; shift ;;
-            --subdomain-aggressive) 
-                AMASS_AGGRESSIVE=true; RUN_AMASS=true; shift ;;
-            --output-subdomains) SUBDOMAIN_OUTPUT="$2"; shift 2 ;;
-            --install) INSTALL_MODE=true; shift ;;
-            --skip-install) SKIP_INSTALL=true; shift ;;
-            -h|--help) show_banner; show_help; exit 0 ;;
-            *) echo -e "${RED}[!] Unknown: $1${NC}"; show_help; exit 1 ;;
+            --install)
+                INSTALL_MODE=true
+                shift
+                ;;
+            --skip-install)
+                SKIP_INSTALL=true
+                shift
+                ;;
+            -d|--domain)
+                DOMAIN="$2"
+                shift 2
+                ;;
+            -f|--domain-list)
+                DOMAIN_LIST="$2"
+                shift 2
+                ;;
+            -o|--output)
+                OUTPUT_FILE="$2"
+                shift 2
+                ;;
+            -l|--log-file)
+                LOG_FILE="$2"
+                shift 2
+                ;;
+            --log-level)
+                LOG_LEVEL="$2"
+                shift 2
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            --append)
+                APPEND=true
+                shift
+                ;;
+            --json-log)
+                JSON_LOG=true
+                shift
+                ;;
+            -a|--all)
+                RUN_ALL=true
+                shift
+                ;;
+            -w|--whois)
+                RUN_WHOIS=true
+                shift
+                ;;
+            -n|--dnsdumpster)
+                RUN_DNSDUMPSTER=true
+                shift
+                ;;
+            -r|--dnsrecon)
+                RUN_DNSRECON=true
+                shift
+                ;;
+            -s|--subfinder)
+                RUN_SUBFINDER=true
+                shift
+                ;;
+            -m|--amass)
+                RUN_AMASS=true
+                shift
+                ;;
+            -t|--assetfinder)
+                RUN_ASSETFINDER=true
+                shift
+                ;;
+            -u|--sublist3r)
+                RUN_SUBLIST3R=true
+                shift
+                ;;
+            -x|--httpx)
+                RUN_HTTPX=true
+                shift
+                ;;
+            --subdomain-all)
+                RUN_SUBFINDER=true
+                RUN_AMASS=true
+                RUN_ASSETFINDER=true
+                RUN_SUBLIST3R=true
+                shift
+                ;;
+            --subdomain-aggressive)
+                AMASS_AGGRESSIVE=true
+                RUN_AMASS=true
+                shift
+                ;;
+            --output-subdomains)
+                SUBDOMAIN_OUTPUT="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_banner
+                show_help
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}[!] Unknown option: $1${NC}"
+                show_help
+                exit 1
+                ;;
         esac
     done
-    
-    # Check if domain provided
-    if [[ -z "$DOMAIN" ]] && [[ -z "$DOMAIN_LIST" ]]; then
-        echo -e "${RED}[!] Domain required${NC}"
-        show_help
-        exit 1
-    fi
     
     # Show banner
     show_banner
     
-    # Handle installation mode
+    # Handle installation mode first
     if [[ "$INSTALL_MODE" == "true" ]]; then
         echo -e "${CYAN}[*] Installation mode activated${NC}"
         echo ""
@@ -637,15 +644,19 @@ main() {
         exit 0
     fi
     
-    # Check dependencies with install prompts (unless skipped)
+    # Check if domain provided
+    if [[ -z "$DOMAIN" ]] && [[ -z "$DOMAIN_LIST" ]]; then
+        echo -e "${RED}[!] Domain required${NC}"
+        show_help
+        exit 1
+    fi
+    
+    # Check dependencies (unless skipped)
     if [[ "$SKIP_INSTALL" != "true" ]]; then
         check_and_install_dependencies
     else
         quick_check_dependencies
     fi
-    
-    # Initialize logging
-    init_logging
     
     # Set default modules if none selected
     if [[ "$RUN_ALL" == "false" ]] && [[ "$RUN_WHOIS" == "false" ]] && [[ "$RUN_DNSDUMPSTER" == "false" ]] && [[ "$RUN_DNSRECON" == "false" ]] && [[ "$RUN_SUBFINDER" == "false" ]] && [[ "$RUN_AMASS" == "false" ]] && [[ "$RUN_ASSETFINDER" == "false" ]] && [[ "$RUN_SUBLIST3R" == "false" ]] && [[ "$RUN_HTTPX" == "false" ]]; then
@@ -654,7 +665,7 @@ main() {
     
     # Start scan
     echo ""
-    log_info "Starting scan for $DOMAIN"
+    echo -e "${CYAN}[*] Starting scan for $DOMAIN${NC}"
     echo ""
     
     if [[ "$RUN_ALL" == "true" ]]; then
@@ -671,7 +682,7 @@ main() {
     fi
     
     echo ""
-    log_success "Scan completed at $(date)"
+    echo -e "${GREEN}[+] Scan completed${NC}"
     echo -e "${RED}[+] it's OUR tool!${NC}"
 }
 
