@@ -710,7 +710,7 @@ show_help() {
     echo "  ./recon-it.sh -d example.com -m -t -u -s         # Subdomain tools only"
 }
 
-# Module functions (short versions for readability)
+# Module functions
 run_whois() {
     echo -e "${GREEN}[+] WHOIS Lookup${NC}"
     echo "================================================"
@@ -884,3 +884,9 @@ main() {
                 ;;
             -q|--quiet)
                 QUIET=true
+                shift
+                ;;
+            --append)
+                APPEND=true
+                shift
+                ;;
