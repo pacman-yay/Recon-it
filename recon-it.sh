@@ -2,7 +2,7 @@
 
 # recon-it - Unified Reconnaissance Tool
 # Slogan: "it's OUR tool"
-# Version: 3.2
+# Version: 3.3
 
 # Colors
 RED='\033[0;31m'
@@ -41,7 +41,7 @@ show_banner() {
     echo "    ║              ╚═╝   ╚═╝                                    ║"
     echo "    ║                                                              ║"
     echo "    ║           ╔══════════════════════════════════════╗           ║"
-    echo "    ║           ║       recon-it v3.2                ║           ║"
+    echo "    ║           ║       recon-it v3.3                ║           ║"
     echo "    ║           ║       it's OUR tool                ║           ║"
     echo "    ║           ╚══════════════════════════════════════╝           ║"
     echo "    ║                                                              ║"
@@ -217,7 +217,7 @@ ensure_pip3() {
     return 0
 }
 
-# Install Subfinder
+# Install Subfinder with improved error handling
 install_subfinder() {
     if command_exists subfinder; then
         echo -e "${GREEN}[+] Subfinder already installed${NC}"
@@ -233,6 +233,7 @@ install_subfinder() {
     echo -e "${GREEN}[+] Installing Subfinder...${NC}"
     ensure_unzip || return 1
     
+    # Try apt first
     if command_exists apt; then
         echo -e "${CYAN}[*] Trying apt install...${NC}"
         sudo apt install subfinder -y 2>/dev/null
@@ -242,30 +243,78 @@ install_subfinder() {
         fi
     fi
     
-    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
-    local url="https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder-linux-amd64.zip"
-    
-    if ! wget -q "$url" -O subfinder.zip; then
-        curl -L -o subfinder.zip "$url" 2>/dev/null
+    # Try Go install
+    if command_exists go; then
+        echo -e "${CYAN}[*] Trying Go install...${NC}"
+        go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 2>&1 | tail -3
+        if [[ -f ~/go/bin/subfinder ]]; then
+            sudo cp ~/go/bin/subfinder /usr/local/bin/
+            sudo chmod +x /usr/local/bin/subfinder
+            if command_exists subfinder; then
+                echo -e "${GREEN}[+] Subfinder installed via Go!${NC}"
+                return 0
+            fi
+        fi
     fi
     
-    if [[ -f "subfinder.zip" ]]; then
-        unzip -q subfinder.zip
-        sudo mv subfinder /usr/local/bin/
-        rm subfinder.zip
-        sudo chmod +x /usr/local/bin/subfinder
-        
-        if command_exists subfinder; then
-            echo -e "${GREEN}[+] Subfinder installed!${NC}"
-            return 0
+    # Download from GitHub with proper version
+    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
+    
+    # Try to get the latest version
+    local latest_version=$(curl -s https://api.github.com/repos/projectdiscovery/subfinder/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+' | head -1)
+    
+    if [[ -z "$latest_version" ]]; then
+        latest_version="2.6.6"
+    fi
+    
+    local url="https://github.com/projectdiscovery/subfinder/releases/download/v${latest_version}/subfinder_${latest_version}_linux_amd64.zip"
+    
+    echo -e "${CYAN}[*] Downloading: subfinder v${latest_version}${NC}"
+    
+    if wget -q --user-agent="Mozilla/5.0" "$url" -O subfinder.zip 2>/dev/null; then
+        if [[ -f "subfinder.zip" ]] && [[ $(file subfinder.zip 2>/dev/null | grep -c "Zip archive") -gt 0 ]]; then
+            unzip -q subfinder.zip
+            sudo mv subfinder /usr/local/bin/
+            rm subfinder.zip
+            sudo chmod +x /usr/local/bin/subfinder
+            
+            if command_exists subfinder; then
+                echo -e "${GREEN}[+] Subfinder installed!${NC}"
+                return 0
+            fi
+        else
+            rm -f subfinder.zip
+        fi
+    fi
+    
+    # Try alternative URL
+    echo -e "${CYAN}[*] Trying alternative download...${NC}"
+    local alt_url="https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip"
+    
+    if wget -q --user-agent="Mozilla/5.0" "$alt_url" -O subfinder.zip 2>/dev/null; then
+        if [[ -f "subfinder.zip" ]] && [[ $(file subfinder.zip 2>/dev/null | grep -c "Zip archive") -gt 0 ]]; then
+            unzip -q subfinder.zip
+            sudo mv subfinder /usr/local/bin/
+            rm subfinder.zip
+            sudo chmod +x /usr/local/bin/subfinder
+            
+            if command_exists subfinder; then
+                echo -e "${GREEN}[+] Subfinder installed!${NC}"
+                return 0
+            fi
+        else
+            rm -f subfinder.zip
         fi
     fi
     
     echo -e "${RED}[-] Subfinder installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install subfinder -y"
+    echo "  # OR: go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
     return 1
 }
 
-# Install HTTPX
+# Install HTTPX with improved error handling
 install_httpx() {
     if command_exists httpx; then
         echo -e "${GREEN}[+] HTTPX already installed${NC}"
@@ -281,6 +330,7 @@ install_httpx() {
     echo -e "${GREEN}[+] Installing HTTPX...${NC}"
     ensure_unzip || return 1
     
+    # Try apt first
     if command_exists apt; then
         echo -e "${CYAN}[*] Trying apt install...${NC}"
         sudo apt install httpx -y 2>/dev/null
@@ -290,26 +340,74 @@ install_httpx() {
         fi
     fi
     
-    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
-    local url="https://github.com/projectdiscovery/httpx/releases/latest/download/httpx-linux-amd64.zip"
-    
-    if ! wget -q "$url" -O httpx.zip; then
-        curl -L -o httpx.zip "$url" 2>/dev/null
+    # Try Go install
+    if command_exists go; then
+        echo -e "${CYAN}[*] Trying Go install...${NC}"
+        go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest 2>&1 | tail -3
+        if [[ -f ~/go/bin/httpx ]]; then
+            sudo cp ~/go/bin/httpx /usr/local/bin/
+            sudo chmod +x /usr/local/bin/httpx
+            if command_exists httpx; then
+                echo -e "${GREEN}[+] HTTPX installed via Go!${NC}"
+                return 0
+            fi
+        fi
     fi
     
-    if [[ -f "httpx.zip" ]]; then
-        unzip -q httpx.zip
-        sudo mv httpx /usr/local/bin/
-        rm httpx.zip
-        sudo chmod +x /usr/local/bin/httpx
-        
-        if command_exists httpx; then
-            echo -e "${GREEN}[+] HTTPX installed!${NC}"
-            return 0
+    # Download from GitHub with proper version
+    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
+    
+    # Try to get the latest version
+    local latest_version=$(curl -s https://api.github.com/repos/projectdiscovery/httpx/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+' | head -1)
+    
+    if [[ -z "$latest_version" ]]; then
+        latest_version="1.3.9"
+    fi
+    
+    local url="https://github.com/projectdiscovery/httpx/releases/download/v${latest_version}/httpx_${latest_version}_linux_amd64.zip"
+    
+    echo -e "${CYAN}[*] Downloading: httpx v${latest_version}${NC}"
+    
+    if wget -q --user-agent="Mozilla/5.0" "$url" -O httpx.zip 2>/dev/null; then
+        if [[ -f "httpx.zip" ]] && [[ $(file httpx.zip 2>/dev/null | grep -c "Zip archive") -gt 0 ]]; then
+            unzip -q httpx.zip
+            sudo mv httpx /usr/local/bin/
+            rm httpx.zip
+            sudo chmod +x /usr/local/bin/httpx
+            
+            if command_exists httpx; then
+                echo -e "${GREEN}[+] HTTPX installed!${NC}"
+                return 0
+            fi
+        else
+            rm -f httpx.zip
+        fi
+    fi
+    
+    # Try alternative URL
+    echo -e "${CYAN}[*] Trying alternative download...${NC}"
+    local alt_url="https://github.com/projectdiscovery/httpx/releases/download/v1.3.9/httpx_1.3.9_linux_amd64.zip"
+    
+    if wget -q --user-agent="Mozilla/5.0" "$alt_url" -O httpx.zip 2>/dev/null; then
+        if [[ -f "httpx.zip" ]] && [[ $(file httpx.zip 2>/dev/null | grep -c "Zip archive") -gt 0 ]]; then
+            unzip -q httpx.zip
+            sudo mv httpx /usr/local/bin/
+            rm httpx.zip
+            sudo chmod +x /usr/local/bin/httpx
+            
+            if command_exists httpx; then
+                echo -e "${GREEN}[+] HTTPX installed!${NC}"
+                return 0
+            fi
+        else
+            rm -f httpx.zip
         fi
     fi
     
     echo -e "${RED}[-] HTTPX installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install httpx -y"
+    echo "  # OR: go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
     return 1
 }
 
@@ -532,6 +630,27 @@ check_and_install_dependencies() {
         fi
     done
     echo ""
+}
+
+# Quick check without install
+quick_check_dependencies() {
+    echo -e "${CYAN}[*] Quick dependency check...${NC}"
+    local missing=()
+    
+    for tool in whois dig host curl; do
+        if ! command_exists $tool; then
+            missing+=($tool)
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[!] Missing required: ${missing[*]}${NC}"
+        echo -e "${YELLOW}[!] Run with --install to auto-install missing tools${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] All required tools present${NC}"
+    return 0
 }
 
 # Help menu
