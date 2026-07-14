@@ -2,7 +2,7 @@
 
 # recon-it - Unified Reconnaissance Tool
 # Slogan: "it's OUR tool"
-# Version: 3.1
+# Version: 3.2
 
 # Colors
 RED='\033[0;31m'
@@ -27,26 +27,26 @@ show_banner() {
     echo -e "${RED}"
     echo "    ╔══════════════════════════════════════════════════════════════╗"
     echo "    ║                                                              ║"
-    echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗               ║"
-    echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║               ║"
-    echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║               ║"
-    echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║               ║"
-    echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║               ║"
-    echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝               ║"
-    echo "    ║              ██╗████████╗                                    ║"
-    echo "    ║              ██║╚══██╔══╝                                    ║"
-    echo "    ║              ██║   ██║                                       ║"
-    echo "    ║              ██║   ██║                                       ║"
-    echo "    ║              ██║   ██║                                       ║"
-    echo "    ║              ╚═╝   ╚═╝                                       ║"
+    echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗              ║"
+    echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║              ║"
+    echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║              ║"
+    echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║              ║"
+    echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║              ║"
+    echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝              ║"
+    echo "    ║              ██╗████████╗                                 ║"
+    echo "    ║              ██║╚══██╔══╝                                 ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ╚═╝   ╚═╝                                    ║"
     echo "    ║                                                              ║"
     echo "    ║           ╔══════════════════════════════════════╗           ║"
-    echo "    ║           ║       recon-it v3.1                  ║           ║"
-    echo "    ║           ║       it's OUR tool                  ║           ║"
+    echo "    ║           ║       recon-it v3.2                ║           ║"
+    echo "    ║           ║       it's OUR tool                ║           ║"
     echo "    ║           ╚══════════════════════════════════════╝           ║"
     echo "    ║                                                              ║"
-    echo "    ║     Amass | Assetfinder | Sublist3r | Subfinder              ║"
-    echo "    ║     DNSRecon | DNSDumpster | HTTPX | WHOIS                   ║"
+    echo "    ║     Amass | Assetfinder | Sublist3r | Subfinder             ║"
+    echo "    ║     DNSRecon | DNSDumpster | HTTPX | WHOIS                 ║"
     echo "    ║                                                              ║"
     echo "    ╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -75,7 +75,43 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Install Go
+# Detect OS and package manager
+detect_os() {
+    if command_exists apt; then
+        echo "debian"
+    elif command_exists yum; then
+        echo "rhel"
+    elif command_exists dnf; then
+        echo "fedora"
+    elif command_exists pacman; then
+        echo "arch"
+    else
+        echo "unknown"
+    fi
+}
+
+# Install base system packages
+install_system_package() {
+    local package=$1
+    local os=$(detect_os)
+    
+    case $os in
+        debian)
+            sudo apt install -y "$package" 2>/dev/null
+            ;;
+        rhel|fedora)
+            sudo yum install -y "$package" 2>/dev/null
+            ;;
+        arch)
+            sudo pacman -S --noconfirm "$package" 2>/dev/null
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Install Go with proper error handling
 install_go() {
     if command_exists go; then
         echo -e "${GREEN}[+] Go already installed${NC}"
@@ -83,210 +119,110 @@ install_go() {
     fi
     
     echo -e "${YELLOW}[!] Go not found. Required for Amass and Assetfinder.${NC}"
-    if prompt_yes_no "Install Go?"; then
-        echo -e "${GREEN}[+] Installing Go...${NC}"
-        
-        # Download and install Go
-        wget -q --show-progress https://golang.org/dl/go1.21.0.linux-amd64.tar.gz
-        sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
-        
-        # Add to PATH
-        export PATH=$PATH:/usr/local/go/bin
-        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-        echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-        
-        rm go1.21.0.linux-amd64.tar.gz
-        
-        # Source the profile
-        source ~/.bashrc
-        
-        if command_exists go; then
-            echo -e "${GREEN}[+] Go installed successfully!${NC}"
-            return 0
-        else
-            echo -e "${RED}[-] Go installation failed${NC}"
-            return 1
-        fi
-    else
+    if ! prompt_yes_no "Install Go?"; then
         echo -e "${YELLOW}[!] Skipping Go installation.${NC}"
         return 1
     fi
-}
-
-# Install Amass
-install_amass() {
-    if command_exists amass; then
-        echo -e "${GREEN}[+] Amass already installed${NC}"
-        return 0
+    
+    echo -e "${GREEN}[+] Installing Go...${NC}"
+    
+    # Remove old Go installation if exists
+    sudo rm -rf /usr/local/go
+    
+    # Download and install Go
+    local go_version="1.21.0"
+    local go_arch="amd64"
+    
+    if [[ "$(uname -m)" == "aarch64" ]]; then
+        go_arch="arm64"
     fi
     
-    echo -e "${YELLOW}[!] Amass not found.${NC}"
-    if prompt_yes_no "Install Amass?"; then
-        echo -e "${GREEN}[+] Installing Amass...${NC}"
-        
-        # Try apt first (Debian/Ubuntu)
-        if command_exists apt; then
-            echo -e "${CYAN}[*] Trying apt install...${NC}"
-            sudo apt update 2>/dev/null
-            sudo apt install amass -y 2>&1 | tail -5
-            
-            if command_exists amass; then
-                echo -e "${GREEN}[+] Amass installed via apt!${NC}"
-                return 0
-            fi
-        fi
-        
-        # Install via Go
-        echo -e "${CYAN}[*] Trying Go install...${NC}"
-        if ! command_exists go; then
-            install_go || return 1
-        fi
-        
-        # Source to get PATH updated
-        source ~/.bashrc
-        
-        if command_exists go; then
-            go install -v github.com/OWASP/Amass/v3/...@master 2>&1 | tail -5
-            
-            # Add to PATH if not already
-            export PATH=$PATH:$HOME/go/bin
-            echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-            
-            # Check if installed
-            if command_exists amass; then
-                echo -e "${GREEN}[+] Amass installed via Go!${NC}"
+    wget -q --show-progress "https://golang.org/dl/go${go_version}.linux-${go_arch}.tar.gz" -O go.tar.gz
+    
+    if [[ ! -f "go.tar.gz" ]]; then
+        echo -e "${RED}[-] Failed to download Go${NC}"
+        return 1
+    fi
+    
+    sudo tar -C /usr/local -xzf go.tar.gz
+    rm go.tar.gz
+    
+    # Add to PATH
+    export PATH=$PATH:/usr/local/go/bin
+    export PATH=$PATH:$HOME/go/bin
+    
+    # Update bashrc
+    if ! grep -q "/usr/local/go/bin" ~/.bashrc; then
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+        echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+    fi
+    
+    # Source the profile
+    source ~/.bashrc
+    
+    if command_exists go; then
+        echo -e "${GREEN}[+] Go installed successfully!${NC}"
+        return 0
+    else
+        echo -e "${RED}[-] Go installation failed${NC}"
+        return 1
+    fi
+}
+
+# Install unzip if missing
+ensure_unzip() {
+    if ! command_exists unzip; then
+        echo -e "${YELLOW}[!] unzip not found. Required for extracting tools.${NC}"
+        if prompt_yes_no "Install unzip?"; then
+            echo -e "${GREEN}[+] Installing unzip...${NC}"
+            install_system_package "unzip"
+            if command_exists unzip; then
+                echo -e "${GREEN}[+] unzip installed!${NC}"
                 return 0
             else
-                echo -e "${YELLOW}[!] Amass installed but not in PATH. Trying to fix...${NC}"
-                # Try to find and link amass
-                find ~/go -name amass -exec sudo ln -sf {} /usr/local/bin/ \; 2>/dev/null
-                if command_exists amass; then
-                    echo -e "${GREEN}[+] Amass linked successfully!${NC}"
-                    return 0
-                fi
+                echo -e "${RED}[-] Failed to install unzip${NC}"
+                return 1
             fi
-        fi
-        
-        echo -e "${RED}[-] Amass installation failed.${NC}"
-        echo -e "${YELLOW}[!] Try installing manually:${NC}"
-        echo "  sudo apt install amass -y  # Debian/Ubuntu"
-        echo "  # OR via Go: go install -v github.com/OWASP/Amass/v3/...@master"
-        return 1
-    else
-        echo -e "${YELLOW}[!] Skipping Amass installation.${NC}"
-        return 1
-    fi
-}
-
-# Install Assetfinder
-install_assetfinder() {
-    if command_exists assetfinder; then
-        echo -e "${GREEN}[+] Assetfinder already installed${NC}"
-        return 0
-    fi
-    
-    echo -e "${YELLOW}[!] Assetfinder not found.${NC}"
-    if prompt_yes_no "Install Assetfinder?"; then
-        echo -e "${GREEN}[+] Installing Assetfinder...${NC}"
-        
-        if ! command_exists go; then
-            install_go || return 1
-        fi
-        
-        source ~/.bashrc
-        
-        if command_exists go; then
-            go install github.com/tomnomnom/assetfinder@latest 2>&1 | tail -5
-            
-            export PATH=$PATH:$HOME/go/bin
-            echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-            
-            if command_exists assetfinder; then
-                echo -e "${GREEN}[+] Assetfinder installed!${NC}"
-                return 0
-            else
-                # Try to find and link
-                find ~/go -name assetfinder -exec sudo ln -sf {} /usr/local/bin/ \; 2>/dev/null
-                if command_exists assetfinder; then
-                    echo -e "${GREEN}[+] Assetfinder linked successfully!${NC}"
-                    return 0
-                fi
-            fi
-        fi
-        
-        echo -e "${RED}[-] Assetfinder installation failed.${NC}"
-        return 1
-    else
-        echo -e "${YELLOW}[!] Skipping Assetfinder installation.${NC}"
-        return 1
-    fi
-}
-
-# Install Sublist3r
-install_sublist3r() {
-    if command_exists sublist3r; then
-        echo -e "${GREEN}[+] Sublist3r already installed${NC}"
-        return 0
-    fi
-    
-    echo -e "${YELLOW}[!] Sublist3r not found.${NC}"
-    if prompt_yes_no "Install Sublist3r?"; then
-        echo -e "${GREEN}[+] Installing Sublist3r...${NC}"
-        
-        # Check if pip3 is available
-        if ! command_exists pip3; then
-            echo -e "${YELLOW}[!] pip3 not found. Installing pip3...${NC}"
-            sudo apt install python3-pip -y 2>/dev/null
-        fi
-        
-        # Install dependencies
-        sudo pip3 install requests dnspython 2>/dev/null
-        
-        # Clone and install
-        if [[ -d "/tmp/Sublist3r" ]]; then
-            rm -rf /tmp/Sublist3r
-        fi
-        
-        git clone https://github.com/aboul3la/Sublist3r.git /tmp/Sublist3r 2>&1 | tail -3
-        cd /tmp/Sublist3r
-        
-        # Try to install
-        sudo python3 setup.py install 2>&1 | tail -5
-        
-        # Try to install with pip as fallback
-        if ! command_exists sublist3r; then
-            sudo pip3 install -e . 2>&1 | tail -5
-        fi
-        
-        cd ..
-        rm -rf /tmp/Sublist3r
-        
-        # Create symlink if needed
-        if ! command_exists sublist3r; then
-            if [[ -f /usr/local/bin/sublist3r ]]; then
-                sudo ln -sf /usr/local/bin/sublist3r /usr/bin/sublist3r
-            elif [[ -f ~/.local/bin/sublist3r ]]; then
-                sudo ln -sf ~/.local/bin/sublist3r /usr/local/bin/sublist3r
-            fi
-        fi
-        
-        if command_exists sublist3r; then
-            echo -e "${GREEN}[+] Sublist3r installed!${NC}"
-            return 0
         else
-            echo -e "${RED}[-] Sublist3r installation failed.${NC}"
-            echo -e "${YELLOW}[!] Try installing manually:${NC}"
-            echo "  git clone https://github.com/aboul3la/Sublist3r.git"
-            echo "  cd Sublist3r && sudo python3 setup.py install"
+            echo -e "${RED}[-] unzip is required. Cannot continue.${NC}"
+            exit 1
+        fi
+    fi
+    return 0
+}
+
+# Install pip3 if missing
+ensure_pip3() {
+    if ! command_exists pip3; then
+        echo -e "${YELLOW}[!] pip3 not found. Required for Python tools.${NC}"
+        if prompt_yes_no "Install pip3?"; then
+            echo -e "${GREEN}[+] Installing pip3...${NC}"
+            install_system_package "python3-pip"
+            if command_exists pip3; then
+                echo -e "${GREEN}[+] pip3 installed!${NC}"
+                return 0
+            else
+                echo -e "${YELLOW}[!] Failed to install pip3 via package manager. Trying Python script...${NC}"
+                curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                sudo python3 get-pip.py
+                rm get-pip.py
+                if command_exists pip3; then
+                    echo -e "${GREEN}[+] pip3 installed via script!${NC}"
+                    return 0
+                else
+                    echo -e "${RED}[-] Failed to install pip3${NC}"
+                    return 1
+                fi
+            fi
+        else
+            echo -e "${YELLOW}[!] Skipping pip3 installation. Some tools may not work.${NC}"
             return 1
         fi
-    else
-        echo -e "${YELLOW}[!] Skipping Sublist3r installation.${NC}"
-        return 1
     fi
+    return 0
 }
 
-# Install Subfinder
+# Install Subfinder with smart error handling
 install_subfinder() {
     if command_exists subfinder; then
         echo -e "${GREEN}[+] Subfinder already installed${NC}"
@@ -294,56 +230,56 @@ install_subfinder() {
     fi
     
     echo -e "${YELLOW}[!] Subfinder not found.${NC}"
-    if prompt_yes_no "Install Subfinder?"; then
-        echo -e "${GREEN}[+] Installing Subfinder...${NC}"
-        
-        # Try apt first
-        if command_exists apt; then
-            sudo apt install subfinder -y 2>&1 | tail -5
-            if command_exists subfinder; then
-                echo -e "${GREEN}[+] Subfinder installed via apt!${NC}"
-                return 0
-            fi
-        fi
-        
-        # Download from GitHub
-        echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
-        wget -q https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder-linux-amd64.zip
-        
-        if [[ -f "subfinder-linux-amd64.zip" ]]; then
-            unzip -q subfinder-linux-amd64.zip
-            sudo mv subfinder /usr/local/bin/
-            rm subfinder-linux-amd64.zip
-            sudo chmod +x /usr/local/bin/subfinder
-            
-            if command_exists subfinder; then
-                echo -e "${GREEN}[+] Subfinder installed!${NC}"
-                return 0
-            fi
-        else
-            echo -e "${YELLOW}[!] Download failed. Trying with curl...${NC}"
-            curl -L -o subfinder.zip https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder-linux-amd64.zip
-            if [[ -f "subfinder.zip" ]]; then
-                unzip -q subfinder.zip
-                sudo mv subfinder /usr/local/bin/
-                rm subfinder.zip
-                sudo chmod +x /usr/local/bin/subfinder
-                if command_exists subfinder; then
-                    echo -e "${GREEN}[+] Subfinder installed!${NC}"
-                    return 0
-                fi
-            fi
-        fi
-        
-        echo -e "${RED}[-] Subfinder installation failed.${NC}"
-        return 1
-    else
+    if ! prompt_yes_no "Install Subfinder?"; then
         echo -e "${YELLOW}[!] Skipping Subfinder installation.${NC}"
         return 1
     fi
+    
+    echo -e "${GREEN}[+] Installing Subfinder...${NC}"
+    
+    # Ensure unzip is installed
+    ensure_unzip || return 1
+    
+    # Try apt first
+    if command_exists apt; then
+        echo -e "${CYAN}[*] Trying apt install...${NC}"
+        sudo apt install subfinder -y 2>/dev/null
+        if command_exists subfinder; then
+            echo -e "${GREEN}[+] Subfinder installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Download from GitHub
+    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
+    local url="https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder-linux-amd64.zip"
+    
+    # Try wget
+    if ! wget -q "$url" -O subfinder.zip; then
+        echo -e "${YELLOW}[!] wget failed. Trying curl...${NC}"
+        curl -L -o subfinder.zip "$url" 2>/dev/null
+    fi
+    
+    if [[ -f "subfinder.zip" ]]; then
+        unzip -q subfinder.zip
+        sudo mv subfinder /usr/local/bin/
+        rm subfinder.zip
+        sudo chmod +x /usr/local/bin/subfinder
+        
+        if command_exists subfinder; then
+            echo -e "${GREEN}[+] Subfinder installed!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] Subfinder installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install subfinder -y"
+    echo "  # OR download from: https://github.com/projectdiscovery/subfinder/releases"
+    return 1
 }
 
-# Install HTTPX
+# Install HTTPX with smart error handling
 install_httpx() {
     if command_exists httpx; then
         echo -e "${GREEN}[+] HTTPX already installed${NC}"
@@ -351,56 +287,55 @@ install_httpx() {
     fi
     
     echo -e "${YELLOW}[!] HTTPX not found.${NC}"
-    if prompt_yes_no "Install HTTPX?"; then
-        echo -e "${GREEN}[+] Installing HTTPX...${NC}"
-        
-        # Try apt first
-        if command_exists apt; then
-            sudo apt install httpx -y 2>&1 | tail -5
-            if command_exists httpx; then
-                echo -e "${GREEN}[+] HTTPX installed via apt!${NC}"
-                return 0
-            fi
-        fi
-        
-        # Download from GitHub
-        echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
-        wget -q https://github.com/projectdiscovery/httpx/releases/latest/download/httpx-linux-amd64.zip
-        
-        if [[ -f "httpx-linux-amd64.zip" ]]; then
-            unzip -q httpx-linux-amd64.zip
-            sudo mv httpx /usr/local/bin/
-            rm httpx-linux-amd64.zip
-            sudo chmod +x /usr/local/bin/httpx
-            
-            if command_exists httpx; then
-                echo -e "${GREEN}[+] HTTPX installed!${NC}"
-                return 0
-            fi
-        else
-            echo -e "${YELLOW}[!] Download failed. Trying with curl...${NC}"
-            curl -L -o httpx.zip https://github.com/projectdiscovery/httpx/releases/latest/download/httpx-linux-amd64.zip
-            if [[ -f "httpx.zip" ]]; then
-                unzip -q httpx.zip
-                sudo mv httpx /usr/local/bin/
-                rm httpx.zip
-                sudo chmod +x /usr/local/bin/httpx
-                if command_exists httpx; then
-                    echo -e "${GREEN}[+] HTTPX installed!${NC}"
-                    return 0
-                fi
-            fi
-        fi
-        
-        echo -e "${RED}[-] HTTPX installation failed.${NC}"
-        return 1
-    else
+    if ! prompt_yes_no "Install HTTPX?"; then
         echo -e "${YELLOW}[!] Skipping HTTPX installation.${NC}"
         return 1
     fi
+    
+    echo -e "${GREEN}[+] Installing HTTPX...${NC}"
+    
+    # Ensure unzip is installed
+    ensure_unzip || return 1
+    
+    # Try apt first
+    if command_exists apt; then
+        echo -e "${CYAN}[*] Trying apt install...${NC}"
+        sudo apt install httpx -y 2>/dev/null
+        if command_exists httpx; then
+            echo -e "${GREEN}[+] HTTPX installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Download from GitHub
+    echo -e "${CYAN}[*] Downloading from GitHub...${NC}"
+    local url="https://github.com/projectdiscovery/httpx/releases/latest/download/httpx-linux-amd64.zip"
+    
+    if ! wget -q "$url" -O httpx.zip; then
+        echo -e "${YELLOW}[!] wget failed. Trying curl...${NC}"
+        curl -L -o httpx.zip "$url" 2>/dev/null
+    fi
+    
+    if [[ -f "httpx.zip" ]]; then
+        unzip -q httpx.zip
+        sudo mv httpx /usr/local/bin/
+        rm httpx.zip
+        sudo chmod +x /usr/local/bin/httpx
+        
+        if command_exists httpx; then
+            echo -e "${GREEN}[+] HTTPX installed!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] HTTPX installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install httpx -y"
+    echo "  # OR download from: https://github.com/projectdiscovery/httpx/releases"
+    return 1
 }
 
-# Install DNSRecon
+# Install DNSRecon with smart error handling
 install_dnsrecon() {
     if command_exists dnsrecon; then
         echo -e "${GREEN}[+] DNSRecon already installed${NC}"
@@ -408,59 +343,244 @@ install_dnsrecon() {
     fi
     
     echo -e "${YELLOW}[!] DNSRecon not found.${NC}"
-    if prompt_yes_no "Install DNSRecon?"; then
-        echo -e "${GREEN}[+] Installing DNSRecon...${NC}"
-        
-        # Check if pip3 is available
-        if ! command_exists pip3; then
-            echo -e "${YELLOW}[!] pip3 not found. Installing pip3...${NC}"
-            sudo apt install python3-pip -y 2>/dev/null
-        fi
-        
-        # Install with pip
-        sudo pip3 install dnsrecon 2>&1 | tail -5
-        
-        # Check if installed
-        if command_exists dnsrecon; then
-            echo -e "${GREEN}[+] DNSRecon installed!${NC}"
-            return 0
-        else
-            # Try to create symlink
-            if [[ -f ~/.local/bin/dnsrecon ]]; then
-                sudo ln -sf ~/.local/bin/dnsrecon /usr/local/bin/dnsrecon
-                if command_exists dnsrecon; then
-                    echo -e "${GREEN}[+] DNSRecon installed!${NC}"
-                    return 0
-                fi
-            fi
-        fi
-        
-        echo -e "${RED}[-] DNSRecon installation failed.${NC}"
-        echo -e "${YELLOW}[!] Try installing manually:${NC}"
-        echo "  sudo pip3 install dnsrecon"
-        return 1
-    else
+    if ! prompt_yes_no "Install DNSRecon?"; then
         echo -e "${YELLOW}[!] Skipping DNSRecon installation.${NC}"
         return 1
     fi
+    
+    echo -e "${GREEN}[+] Installing DNSRecon...${NC}"
+    
+    # Ensure pip3 is installed
+    ensure_pip3 || return 1
+    
+    # Try apt first
+    if command_exists apt; then
+        echo -e "${CYAN}[*] Trying apt install...${NC}"
+        sudo apt install dnsrecon -y 2>/dev/null
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try pip with --break-system-packages (Ubuntu 24.04+)
+    echo -e "${CYAN}[*] Trying pip install...${NC}"
+    if sudo pip3 install dnsrecon --break-system-packages 2>/dev/null; then
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed via pip!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try regular pip (older systems)
+    if sudo pip3 install dnsrecon 2>/dev/null; then
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed via pip!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try to find and symlink
+    if [[ -f ~/.local/bin/dnsrecon ]]; then
+        sudo ln -sf ~/.local/bin/dnsrecon /usr/local/bin/dnsrecon
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] DNSRecon installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install dnsrecon -y"
+    echo "  # OR: sudo pip3 install dnsrecon --break-system-packages"
+    return 1
 }
-# Install base packages
-install_base_packages() {
-    local missing=()
+
+# Install Amass with smart error handling
+install_amass() {
+    if command_exists amass; then
+        echo -e "${GREEN}[+] Amass already installed${NC}"
+        return 0
+    fi
     
-    for pkg in whois dnsutils curl; do
-        if ! command_exists $pkg; then
-            missing+=($pkg)
-        fi
-    done
+    echo -e "${YELLOW}[!] Amass not found.${NC}"
+    if ! prompt_yes_no "Install Amass?"; then
+        echo -e "${YELLOW}[!] Skipping Amass installation.${NC}"
+        return 1
+    fi
     
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        echo -e "${YELLOW}[!] Missing base packages: ${missing[*]}${NC}"
-        if prompt_yes_no "Install missing base packages?"; then
-            sudo apt update 2>/dev/null
-            sudo apt install -y "${missing[@]}" 2>/dev/null
-            echo -e "${GREEN}[+] Base packages installed!${NC}"
+    echo -e "${GREEN}[+] Installing Amass...${NC}"
+    
+    # Try apt first
+    if command_exists apt; then
+        echo -e "${CYAN}[*] Trying apt install...${NC}"
+        sudo apt update 2>/dev/null
+        sudo apt install amass -y 2>/dev/null
+        if command_exists amass; then
+            echo -e "${GREEN}[+] Amass installed via apt!${NC}"
+            return 0
         fi
+    fi
+    
+    # Install via Go (correct module path)
+    echo -e "${CYAN}[*] Trying Go install...${NC}"
+    if ! command_exists go; then
+        install_go || return 1
+    fi
+    
+    # Source to get PATH updated
+    source ~/.bashrc
+    
+    if command_exists go; then
+        echo -e "${CYAN}[*] Installing Amass via Go...${NC}"
+        
+        # Try different module paths
+        for module in "github.com/owasp-amass/amass/v4/...@master" "github.com/OWASP/Amass/v3/...@master"; do
+            echo -e "${CYAN}[*] Trying: $module${NC}"
+            if go install -v "$module" 2>&1 | tail -3; then
+                export PATH=$PATH:$HOME/go/bin
+                echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+                
+                # Check if installed
+                if command_exists amass; then
+                    echo -e "${GREEN}[+] Amass installed via Go!${NC}"
+                    return 0
+                fi
+            fi
+        done
+        
+        # Try to find and link amass
+        local amass_path=$(find ~/go -name amass -type f 2>/dev/null | head -1)
+        if [[ -n "$amass_path" ]]; then
+            sudo ln -sf "$amass_path" /usr/local/bin/amass
+            if command_exists amass; then
+                echo -e "${GREEN}[+] Amass linked successfully!${NC}"
+                return 0
+            fi
+        fi
+    fi
+    
+    echo -e "${RED}[-] Amass installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  sudo apt install amass -y"
+    echo "  # OR: go install -v github.com/owasp-amass/amass/v4/...@master"
+    return 1
+}
+
+# Install Assetfinder with smart error handling
+install_assetfinder() {
+    if command_exists assetfinder; then
+        echo -e "${GREEN}[+] Assetfinder already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Assetfinder not found.${NC}"
+    if ! prompt_yes_no "Install Assetfinder?"; then
+        echo -e "${YELLOW}[!] Skipping Assetfinder installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Assetfinder...${NC}"
+    
+    # Install via Go
+    if ! command_exists go; then
+        install_go || return 1
+    fi
+    
+    source ~/.bashrc
+    
+    if command_exists go; then
+        echo -e "${CYAN}[*] Installing Assetfinder via Go...${NC}"
+        go install github.com/tomnomnom/assetfinder@latest 2>&1 | tail -3
+        
+        export PATH=$PATH:$HOME/go/bin
+        echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+        
+        if command_exists assetfinder; then
+            echo -e "${GREEN}[+] Assetfinder installed!${NC}"
+            return 0
+        fi
+        
+        # Try to find and link
+        local asset_path=$(find ~/go -name assetfinder -type f 2>/dev/null | head -1)
+        if [[ -n "$asset_path" ]]; then
+            sudo ln -sf "$asset_path" /usr/local/bin/assetfinder
+            if command_exists assetfinder; then
+                echo -e "${GREEN}[+] Assetfinder linked successfully!${NC}"
+                return 0
+            fi
+        fi
+    fi
+    
+    echo -e "${RED}[-] Assetfinder installation failed.${NC}"
+    echo -e "${YELLOW}[!] Try installing manually:${NC}"
+    echo "  go install github.com/tomnomnom/assetfinder@latest"
+    return 1
+}
+
+# Install Sublist3r with smart error handling
+install_sublist3r() {
+    if command_exists sublist3r; then
+        echo -e "${GREEN}[+] Sublist3r already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Sublist3r not found.${NC}"
+    if ! prompt_yes_no "Install Sublist3r?"; then
+        echo -e "${YELLOW}[!] Skipping Sublist3r installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Sublist3r...${NC}"
+    
+    # Ensure pip3 is installed
+    ensure_pip3 || return 1
+    
+    # Install dependencies
+    echo -e "${CYAN}[*] Installing Python dependencies...${NC}"
+    sudo pip3 install requests dnspython --break-system-packages 2>/dev/null
+    sudo pip3 install requests dnspython 2>/dev/null
+    
+    # Clone and install
+    echo -e "${CYAN}[*] Cloning Sublist3r...${NC}"
+    if [[ -d "/tmp/Sublist3r" ]]; then
+        rm -rf /tmp/Sublist3r
+    fi
+    
+    if ! git clone https://github.com/aboul3la/Sublist3r.git /tmp/Sublist3r 2>/dev/null; then
+        echo -e "${RED}[-] Failed to clone Sublist3r${NC}"
+        return 1
+    fi
+    
+    cd /tmp/Sublist3r
+    
+    # Try installation methods
+    echo -e "${CYAN}[*] Installing Sublist3r...${NC}"
+    sudo python3 setup.py install 2>/dev/null || \
+    sudo pip3 install -e . --break-system-packages 2>/dev/null || \
+    sudo pip3 install -e . 2>/dev/null
+    
+    cd ..
+    rm -rf /tmp/Sublist3r
+    
+    # Create symlink if needed
+    if ! command_exists sublist3r; then
+        if [[ -f /usr/local/bin/sublist3r ]]; then
+            sudo ln -sf /usr/local/bin/sublist3r /usr/bin/sublist3r
+        elif [[ -f ~/.local/bin/sublist3r ]]; then
+            sudo ln -sf ~/.local/bin/sublist3r /usr/local/bin/sublist3r
+        fi
+    fi
+    
+    if command_exists sublist3r; then
+        echo -e "${GREEN}[+] Sublist3r installed!${NC}"
+        return 0
+    else
+        echo -e "${RED}[-] Sublist3r installation failed.${NC}"
+        echo -e "${YELLOW}[!] Try installing manually:${NC}"
+        echo "  git clone https://github.com/aboul3la/Sublist3r.git"
+        echo "  cd Sublist3r && sudo python3 setup.py install"
+        return 1
     fi
 }
 
@@ -469,7 +589,27 @@ check_and_install_dependencies() {
     echo -e "${CYAN}[*] Checking dependencies...${NC}"
     echo ""
     
-    install_base_packages
+    # Install base packages first
+    echo -e "${CYAN}[*] Checking base packages...${NC}"
+    local base_packages=()
+    for pkg in whois dnsutils curl; do
+        if ! command_exists $pkg; then
+            base_packages+=($pkg)
+        fi
+    done
+    
+    if [[ ${#base_packages[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[!] Missing base packages: ${base_packages[*]}${NC}"
+        if prompt_yes_no "Install missing base packages?"; then
+            sudo apt update 2>/dev/null
+            sudo apt install -y "${base_packages[@]}" 2>/dev/null
+            echo -e "${GREEN}[+] Base packages installed!${NC}"
+        fi
+    fi
+    
+    echo ""
+    
+    # Install each tool
     install_subfinder
     install_httpx
     install_dnsrecon
@@ -481,14 +621,24 @@ check_and_install_dependencies() {
     echo -e "${GREEN}[+] Dependency check complete!${NC}"
     echo ""
     
+    # Show installed tools
     echo -e "${CYAN}Installed tools:${NC}"
+    local all_ok=true
     for tool in whois dig curl host amass assetfinder sublist3r dnsrecon subfinder httpx; do
         if command_exists $tool; then
             echo -e "  ${GREEN}OK $tool${NC}"
         else
             echo -e "  ${RED}MISSING $tool${NC}"
+            all_ok=false
         fi
     done
+    
+    if [[ "$all_ok" == "false" ]]; then
+        echo ""
+        echo -e "${YELLOW}[!] Some tools are missing. The script will still work but with limited functionality.${NC}"
+        echo -e "${YELLOW}[!] Run 'sudo apt install <tool>' or install manually.${NC}"
+    fi
+    
     echo ""
 }
 
@@ -560,7 +710,7 @@ show_help() {
     echo "  ./recon-it.sh -d example.com -m -t -u -s         # Subdomain tools only"
 }
 
-# Module functions
+# Module functions (short versions for readability)
 run_whois() {
     echo -e "${GREEN}[+] WHOIS Lookup${NC}"
     echo "================================================"
@@ -734,134 +884,3 @@ main() {
                 ;;
             -q|--quiet)
                 QUIET=true
-                shift
-                ;;
-            --append)
-                APPEND=true
-                shift
-                ;;
-            --json-log)
-                JSON_LOG=true
-                shift
-                ;;
-            -a|--all)
-                RUN_ALL=true
-                shift
-                ;;
-            -w|--whois)
-                RUN_WHOIS=true
-                shift
-                ;;
-            -n|--dnsdumpster)
-                RUN_DNSDUMPSTER=true
-                shift
-                ;;
-            -r|--dnsrecon)
-                RUN_DNSRECON=true
-                shift
-                ;;
-            -s|--subfinder)
-                RUN_SUBFINDER=true
-                shift
-                ;;
-            -m|--amass)
-                RUN_AMASS=true
-                shift
-                ;;
-            -t|--assetfinder)
-                RUN_ASSETFINDER=true
-                shift
-                ;;
-            -u|--sublist3r)
-                RUN_SUBLIST3R=true
-                shift
-                ;;
-            -x|--httpx)
-                RUN_HTTPX=true
-                shift
-                ;;
-            --subdomain-all)
-                RUN_SUBFINDER=true
-                RUN_AMASS=true
-                RUN_ASSETFINDER=true
-                RUN_SUBLIST3R=true
-                shift
-                ;;
-            --subdomain-aggressive)
-                AMASS_AGGRESSIVE=true
-                RUN_AMASS=true
-                shift
-                ;;
-            --output-subdomains)
-                SUBDOMAIN_OUTPUT="$2"
-                shift 2
-                ;;
-            -h|--help)
-                show_banner
-                show_help
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}[!] Unknown option: $1${NC}"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
-    
-    # Show banner
-    show_banner
-    
-    # Handle installation mode first
-    if [[ "$INSTALL_MODE" == "true" ]]; then
-        echo -e "${CYAN}[*] Installation mode activated${NC}"
-        echo ""
-        check_and_install_dependencies
-        echo -e "${GREEN}[+] Installation complete!${NC}"
-        echo -e "${YELLOW}[!] Run without --install to start scanning${NC}"
-        exit 0
-    fi
-    
-    # Check if domain provided
-    if [[ -z "$DOMAIN" ]] && [[ -z "$DOMAIN_LIST" ]]; then
-        echo -e "${RED}[!] Domain required${NC}"
-        show_help
-        exit 1
-    fi
-    
-    # Check dependencies (unless skipped)
-    if [[ "$SKIP_INSTALL" != "true" ]]; then
-        check_and_install_dependencies
-    else
-        quick_check_dependencies
-    fi
-    
-    # Set default modules if none selected
-    if [[ "$RUN_ALL" == "false" ]] && [[ "$RUN_WHOIS" == "false" ]] && [[ "$RUN_DNSDUMPSTER" == "false" ]] && [[ "$RUN_DNSRECON" == "false" ]] && [[ "$RUN_SUBFINDER" == "false" ]] && [[ "$RUN_AMASS" == "false" ]] && [[ "$RUN_ASSETFINDER" == "false" ]] && [[ "$RUN_SUBLIST3R" == "false" ]] && [[ "$RUN_HTTPX" == "false" ]]; then
-        RUN_ALL=true
-    fi
-    
-    # Start scan
-    echo ""
-    echo -e "${CYAN}[*] Starting scan for $DOMAIN${NC}"
-    echo ""
-    
-    if [[ "$RUN_ALL" == "true" ]]; then
-        run_all
-    else
-        [[ "$RUN_WHOIS" == "true" ]] && run_whois
-        [[ "$RUN_DNSDUMPSTER" == "true" ]] && run_dnsdumpster
-        [[ "$RUN_DNSRECON" == "true" ]] && run_dnsrecon
-        [[ "$RUN_SUBFINDER" == "true" ]] && run_subfinder
-        [[ "$RUN_AMASS" == "true" ]] && run_amass
-        [[ "$RUN_ASSETFINDER" == "true" ]] && run_assetfinder
-        [[ "$RUN_SUBLIST3R" == "true" ]] && run_sublist3r
-        [[ "$RUN_HTTPX" == "true" ]] && run_httpx
-    fi
-    
-    echo ""
-    echo -e "${GREEN}[+] Scan completed${NC}"
-    echo -e "${RED}[+] it's OUR tool!${NC}"
-}
-
-main "$@"
