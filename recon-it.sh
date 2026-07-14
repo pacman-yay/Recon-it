@@ -2,125 +2,346 @@
 
 # recon-it - Unified Reconnaissance Tool
 # Slogan: "it's OUR tool"
-# Version: 2.1
+# Version: 3.1
 
-# Auto-fix permissions if needed
-if [[ ! -x "$0" ]]; then
-    echo -e "\033[0;33m[!] Script is not executable. Fixing permissions...\033[0m"
-    chmod +x "$0"
-    echo -e "\033[0;32m[+] Permissions fixed. Please run the script again.\033[0m"
-    exit 0
-fi
-
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Global variables for logging
+# Variables
 LOG_FILE=""
 LOG_LEVEL="INFO"
 VERBOSE=false
 QUIET=false
+AUTO_INSTALL=false
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-
-# Check if running with proper permissions
-check_permissions() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${YELLOW}[!] Note: Running without root privileges. Some WHOIS lookups might be limited.${NC}"
-        echo -e "${YELLOW}[!] To run as root: sudo ./recon-it.sh [options]${NC}"
-    fi
-}
 
 # Banner
 show_banner() {
     echo -e "${RED}"
-    echo "    ╔═════════════════════════════════════════════════════════════╗"
-    echo "    ║                                                             ║"
+    echo "    ╔══════════════════════════════════════════════════════════════╗"
+    echo "    ║                                                              ║"
     echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗              ║"
     echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║              ║"
     echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║              ║"
     echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║              ║"
     echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║              ║"
     echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝              ║"
-    echo "    ║              ██╗████████╗                                   ║"
-    echo "    ║              ██║╚══██╔══╝                                   ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ╚═╝   ╚═╝                                      ║"
-    echo "    ║                                                             ║"
-    echo "    ║           ╔════════════════════════════════════╗            ║"
-    echo "    ║           ║       recon-it v2.1                ║            ║"
-    echo "    ║           ║       it's OUR tool                ║            ║"
-    echo "    ║           ╚════════════════════════════════════╝            ║"
-    echo "    ║                                                             ║"
-    echo "    ╚═════════════════════════════════════════════════════════════╝"
+    echo "    ║              ██╗████████╗                                 ║"
+    echo "    ║              ██║╚══██╔══╝                                 ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ██║   ██║                                    ║"
+    echo "    ║              ╚═╝   ╚═╝                                    ║"
+    echo "    ║                                                              ║"
+    echo "    ║           ╔══════════════════════════════════════╗           ║"
+    echo "    ║           ║       recon-it v3.1                ║           ║"
+    echo "    ║           ║       it's OUR tool                ║           ║"
+    echo "    ║           ╚══════════════════════════════════════╝           ║"
+    echo "    ║                                                              ║"
+    echo "    ║     🔍 Amass | Assetfinder | Sublist3r | Subfinder          ║"
+    echo "    ║     🌐 DNSRecon | DNSDumpster | HTTPX | WHOIS              ║"
+    echo "    ║                                                              ║"
+    echo "    ╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-# Logging functions
-log_message() {
-    local level=$1
-    local message=$2
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+# Prompt for yes/no
+prompt_yes_no() {
+    local prompt="$1"
+    local default="${2:-n}"  # Default to No if not specified
     
-    # Console output based on verbosity and quiet mode
-    if [[ "$QUIET" != "true" ]]; then
-        case $level in
-            "ERROR")
-                echo -e "${RED}[ERROR] $message${NC}" >&2
-                ;;
-            "WARNING")
-                echo -e "${YELLOW}[WARNING] $message${NC}"
-                ;;
-            "INFO")
-                if [[ "$VERBOSE" == "true" ]] || [[ "$LOG_LEVEL" == "INFO" ]]; then
-                    echo -e "${GREEN}[INFO] $message${NC}"
+    while true; do
+        read -p "$prompt [y/N]: " yn
+        case $yn in
+            [Yy]* ) return 0;;
+            [Nn]* ) return 1;;
+            "" ) 
+                if [[ "$default" == "y" ]]; then
+                    return 0
+                else
+                    return 1
                 fi
                 ;;
-            "DEBUG")
-                if [[ "$VERBOSE" == "true" ]]; then
-                    echo -e "${CYAN}[DEBUG] $message${NC}"
-                fi
-                ;;
-            "SUCCESS")
-                echo -e "${GREEN}[SUCCESS] $message${NC}"
-                ;;
-            *)
-                echo "$message"
-                ;;
+            * ) echo "Please answer yes or no.";;
         esac
+    done
+}
+
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Install Go if missing
+install_go() {
+    echo -e "${YELLOW}[!] Go not found. Required for Amass and Assetfinder.${NC}"
+    if prompt_yes_no "Install Go?"; then
+        echo -e "${GREEN}[+] Installing Go...${NC}"
+        wget -q https://golang.org/dl/go1.21.0.linux-amd64.tar.gz
+        sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+        export PATH=$PATH:/usr/local/go/bin
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+        rm go1.21.0.linux-amd64.tar.gz
+        echo -e "${GREEN}[+] Go installed successfully!${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[!] Skipping Go installation.${NC}"
+        return 1
+    fi
+}
+
+# Install Amass
+install_amass() {
+    if command_exists amass; then
+        echo -e "${GREEN}[+] Amass already installed${NC}"
+        return 0
     fi
     
-    # Write to log file if specified
-    if [[ -n "$LOG_FILE" ]]; then
-        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    echo -e "${YELLOW}[!] Amass not found.${NC}"
+    if prompt_yes_no "Install Amass?"; then
+        echo -e "${GREEN}[+] Installing Amass...${NC}"
+        
+        # Try apt first (Debian/Ubuntu)
+        if command_exists apt; then
+            sudo apt install amass -y 2>/dev/null
+            if command_exists amass; then
+                echo -e "${GREEN}[+] Amass installed via apt!${NC}"
+                return 0
+            fi
+        fi
+        
+        # Install via Go
+        if ! command_exists go; then
+            install_go || return 1
+        fi
+        
+        if command_exists go; then
+            go install -v github.com/OWASP/Amass/v3/...@master
+            export PATH=$PATH:$HOME/go/bin
+            echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+            echo -e "${GREEN}[+] Amass installed via Go!${NC}"
+            return 0
+        fi
+    else
+        echo -e "${YELLOW}[!] Skipping Amass installation.${NC}"
+        return 1
     fi
 }
 
-log_info() {
-    log_message "INFO" "$1"
+# Install Assetfinder
+install_assetfinder() {
+    if command_exists assetfinder; then
+        echo -e "${GREEN}[+] Assetfinder already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Assetfinder not found.${NC}"
+    if prompt_yes_no "Install Assetfinder?"; then
+        echo -e "${GREEN}[+] Installing Assetfinder...${NC}"
+        
+        if ! command_exists go; then
+            install_go || return 1
+        fi
+        
+        if command_exists go; then
+            go install github.com/tomnomnom/assetfinder@latest
+            export PATH=$PATH:$HOME/go/bin
+            echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+            echo -e "${GREEN}[+] Assetfinder installed!${NC}"
+            return 0
+        fi
+    else
+        echo -e "${YELLOW}[!] Skipping Assetfinder installation.${NC}"
+        return 1
+    fi
 }
 
-log_error() {
-    log_message "ERROR" "$1"
+# Install Sublist3r
+install_sublist3r() {
+    if command_exists sublist3r; then
+        echo -e "${GREEN}[+] Sublist3r already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Sublist3r not found.${NC}"
+    if prompt_yes_no "Install Sublist3r?"; then
+        echo -e "${GREEN}[+] Installing Sublist3r...${NC}"
+        
+        if [[ -d "/tmp/Sublist3r" ]]; then
+            rm -rf /tmp/Sublist3r
+        fi
+        
+        git clone https://github.com/aboul3la/Sublist3r.git /tmp/Sublist3r
+        cd /tmp/Sublist3r
+        sudo python3 setup.py install 2>/dev/null
+        cd ..
+        rm -rf /tmp/Sublist3r
+        
+        if command_exists sublist3r; then
+            echo -e "${GREEN}[+] Sublist3r installed!${NC}"
+            return 0
+        else
+            echo -e "${RED}[-] Sublist3r installation failed.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}[!] Skipping Sublist3r installation.${NC}"
+        return 1
+    fi
 }
 
-log_warning() {
-    log_message "WARNING" "$1"
+# Install Subfinder
+install_subfinder() {
+    if command_exists subfinder; then
+        echo -e "${GREEN}[+] Subfinder already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Subfinder not found.${NC}"
+    if prompt_yes_no "Install Subfinder?"; then
+        echo -e "${GREEN}[+] Installing Subfinder...${NC}"
+        
+        wget -q https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder-linux-amd64.zip
+        unzip -q subfinder-linux-amd64.zip
+        sudo mv subfinder /usr/local/bin/
+        rm subfinder-linux-amd64.zip
+        sudo chmod +x /usr/local/bin/subfinder
+        
+        echo -e "${GREEN}[+] Subfinder installed!${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[!] Skipping Subfinder installation.${NC}"
+        return 1
+    fi
 }
 
-log_debug() {
-    log_message "DEBUG" "$1"
+# Install HTTPX
+install_httpx() {
+    if command_exists httpx; then
+        echo -e "${GREEN}[+] HTTPX already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] HTTPX not found.${NC}"
+    if prompt_yes_no "Install HTTPX?"; then
+        echo -e "${GREEN}[+] Installing HTTPX...${NC}"
+        
+        wget -q https://github.com/projectdiscovery/httpx/releases/latest/download/httpx-linux-amd64.zip
+        unzip -q httpx-linux-amd64.zip
+        sudo mv httpx /usr/local/bin/
+        rm httpx-linux-amd64.zip
+        sudo chmod +x /usr/local/bin/httpx
+        
+        echo -e "${GREEN}[+] HTTPX installed!${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[!] Skipping HTTPX installation.${NC}"
+        return 1
+    fi
 }
 
-log_success() {
-    log_message "SUCCESS" "$1"
+# Install DNSRecon
+install_dnsrecon() {
+    if command_exists dnsrecon; then
+        echo -e "${GREEN}[+] DNSRecon already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] DNSRecon not found.${NC}"
+    if prompt_yes_no "Install DNSRecon?"; then
+        echo -e "${GREEN}[+] Installing DNSRecon...${NC}"
+        sudo pip3 install dnsrecon 2>/dev/null
+        
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed!${NC}"
+            return 0
+        else
+            echo -e "${RED}[-] DNSRecon installation failed.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}[!] Skipping DNSRecon installation.${NC}"
+        return 1
+    fi
+}
+
+# Install required base packages
+install_base_packages() {
+    local missing=()
+    
+    for pkg in whois dnsutils curl; do
+        if ! command_exists $pkg; then
+            missing+=($pkg)
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[!] Missing base packages: ${missing[*]}${NC}"
+        if prompt_yes_no "Install missing base packages?"; then
+            sudo apt update 2>/dev/null
+            sudo apt install -y "${missing[@]}" 2>/dev/null
+            echo -e "${GREEN}[+] Base packages installed!${NC}"
+        fi
+    fi
+}
+
+# Main dependency check with auto-install
+check_and_install_dependencies() {
+    echo -e "${CYAN}[*] Checking dependencies...${NC}"
+    echo ""
+    
+    # Install base packages first
+    install_base_packages
+    
+    # Install each tool if missing
+    install_subfinder
+    install_httpx
+    install_dnsrecon
+    install_amass
+    install_assetfinder
+    install_sublist3r
+    
+    echo ""
+    echo -e "${GREEN}[+] Dependency check complete!${NC}"
+    echo ""
+    
+    # Show installed tools
+    echo -e "${CYAN}Installed tools:${NC}"
+    for tool in whois dig curl host amass assetfinder sublist3r dnsrecon subfinder httpx; do
+        if command_exists $tool; then
+            echo -e "  ${GREEN}✅ $tool${NC}"
+        else
+            echo -e "  ${RED}❌ $tool${NC}"
+        fi
+    done
+    echo ""
+}
+
+# Quick check without install
+quick_check_dependencies() {
+    echo -e "${CYAN}[*] Quick dependency check...${NC}"
+    local missing=()
+    
+    for tool in whois dig host curl; do
+        if ! command_exists $tool; then
+            missing+=($tool)
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[!] Missing required: ${missing[*]}${NC}"
+        echo -e "${YELLOW}[!] Run with --install to auto-install missing tools${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] All required tools present${NC}"
+    return 0
 }
 
 # Help menu
@@ -129,43 +350,74 @@ show_help() {
     echo "  ./recon-it.sh [OPTIONS] -d <domain>"
     echo ""
     echo -e "${YELLOW}Target Options:${NC}"
-    echo "  -d, --domain <domain>       Target domain (required)"
-    echo "  -f, --domain-list <file>    File containing list of domains"
+    echo "  -d, --domain <domain>       Target domain"
+    echo "  -f, --domain-list <file>    File with domains"
     echo ""
     echo -e "${YELLOW}Module Options:${NC}"
-    echo "  -a, --all                   Run all reconnaissance modules"
-    echo "  -w, --whois                 Run WHOIS lookup"
-    echo "  -n, --dnsdumpster           Run DNSDumpster lookup"
-    echo "  -r, --dnsrecon              Run DNSRecon"
-    echo "  -s, --subfinder             Run Subfinder"
-    echo "  -x, --httpx                 Run HTTPX probe"
+    echo "  -a, --all                   Run ALL modules"
+    echo "  -w, --whois                 WHOIS lookup"
+    echo "  -n, --dnsdumpster           DNSDumpster"
+    echo "  -r, --dnsrecon              DNSRecon"
+    echo "  -s, --subfinder             Subfinder"
+    echo "  -m, --amass                 Amass"
+    echo "  -t, --assetfinder           Assetfinder"
+    echo "  -u, --sublist3r             Sublist3r"
+    echo "  -x, --httpx                 HTTPX probe"
+    echo ""
+    echo -e "${YELLOW}Subdomain Options:${NC}"
+    echo "  --subdomain-all             ALL subdomain tools"
+    echo "  --subdomain-aggressive      Aggressive Amass"
+    echo "  --output-subdomains <file>  Save subdomains"
+    echo ""
+    echo -e "${YELLOW}Installation Options:${NC}"
+    echo "  --install                   Auto-install missing tools"
+    echo "  --skip-install              Skip all installation prompts"
     echo ""
     echo -e "${YELLOW}Logging Options:${NC}"
-    echo "  -o, --output <file>         Output file for results (overwrites)"
-    echo "  -l, --log-file <file>       Log file path (default: recon-it_TIMESTAMP.log)"
-    echo "  --log-level <level>         Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)"
-    echo "  -v, --verbose               Enable verbose output"
-    echo "  -q, --quiet                 Suppress all output except errors"
-    echo "  --append                    Append to output file instead of overwriting"
-    echo "  --json-log                  Generate JSON format logs"
+    echo "  -o, --output <file>         Output file"
+    echo "  -l, --log-file <file>       Log file"
+    echo "  --log-level <level>         DEBUG|INFO|WARNING|ERROR"
+    echo "  -v, --verbose               Verbose output"
+    echo "  -q, --quiet                 Quiet mode"
+    echo "  --json-log                  JSON logs"
     echo ""
-    echo -e "${YELLOW}Other Options:${NC}"
-    echo "  -t, --threads <num>         Number of threads for concurrent scans"
-    echo "  --timeout <seconds>         Timeout for each module (default: 30)"
-    echo "  --config <file>             Use custom config file"
-    echo "  -h, --help                  Show this help message"
+    echo -e "${YELLOW}Other:${NC}"
+    echo "  -h, --help                  Show this help"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  ./recon-it.sh -d example.com -a"
-    echo "  ./recon-it.sh -d example.com -w -n -s -v"
-    echo "  ./recon-it.sh -d example.com -a -o results.txt --log-level DEBUG"
-    echo "  ./recon-it.sh -f domains.txt -a --threads 10 -l scan.log"
-    echo "  ./recon-it.sh -d example.com --log-file custom.log --json-log"
-    echo ""
-    echo -e "${YELLOW}Quick Start:${NC}"
-    echo "  chmod +x recon-it.sh  # Make executable"
-    echo "  ./recon-it.sh -d pngtree.com -a  # Run full scan"
+    echo "  ./recon-it.sh -d example.com -a                    # Full scan"
+    echo "  ./recon-it.sh -d example.com --install -a          # Install + scan"
+    echo "  ./recon-it.sh -d example.com -m -t -u -s           # Subdomain tools only"
+    echo "  ./recon-it.sh -d example.com --subdomain-aggressive # Aggressive mode"
 }
+
+# Logging functions
+log_message() {
+    local level=$1
+    local message=$2
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    if [[ "$QUIET" != "true" ]]; then
+        case $level in
+            "ERROR") echo -e "${RED}[ERROR] $message${NC}" >&2 ;;
+            "WARNING") echo -e "${YELLOW}[WARNING] $message${NC}" ;;
+            "INFO") [[ "$VERBOSE" == "true" ]] && echo -e "${GREEN}[INFO] $message${NC}" ;;
+            "DEBUG") [[ "$VERBOSE" == "true" ]] && echo -e "${CYAN}[DEBUG] $message${NC}" ;;
+            "SUCCESS") echo -e "${GREEN}[SUCCESS] $message${NC}" ;;
+            *) echo "$message" ;;
+        esac
+    fi
+    
+    if [[ -n "$LOG_FILE" ]]; then
+        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    fi
+}
+
+log_info() { log_message "INFO" "$1"; }
+log_error() { log_message "ERROR" "$1"; }
+log_warning() { log_message "WARNING" "$1"; }
+log_debug() { log_message "DEBUG" "$1"; }
+log_success() { log_message "SUCCESS" "$1"; }
 
 # Initialize logging
 init_logging() {
@@ -173,15 +425,13 @@ init_logging() {
         LOG_FILE="recon-it_${DOMAIN:-multi}_${TIMESTAMP}.log"
     fi
     
-    # Create log directory if it doesn't exist
     local log_dir=$(dirname "$LOG_FILE")
     if [[ "$log_dir" != "." ]] && [[ ! -d "$log_dir" ]]; then
         mkdir -p "$log_dir"
     fi
     
-    # Initialize log file
     echo "========================================" > "$LOG_FILE"
-    echo "recon-it v2.1 - Log File" >> "$LOG_FILE"
+    echo "recon-it v3.1 - Log File" >> "$LOG_FILE"
     echo "Started: $(date)" >> "$LOG_FILE"
     echo "Target: ${DOMAIN:-Multiple Domains}" >> "$LOG_FILE"
     echo "Log Level: $LOG_LEVEL" >> "$LOG_FILE"
@@ -189,270 +439,128 @@ init_logging() {
     echo "" >> "$LOG_FILE"
 }
 
-# Generate JSON log entry
-log_json() {
-    local level=$1
-    local message=$2
-    local module=$3
-    local timestamp=$(date -Iseconds)
-    
-    if [[ "$JSON_LOG" == "true" ]] && [[ -n "$LOG_FILE" ]]; then
-        echo "{\"timestamp\":\"$timestamp\",\"level\":\"$level\",\"module\":\"${module:-general}\",\"message\":\"$message\"}" >> "${LOG_FILE}.json"
-    fi
-}
-
-# Check dependencies
-check_dependencies() {
-    log_info "Checking dependencies..."
-    local missing_deps=()
-    
-    # Check for required tools
-    for tool in whois dig host curl; do
-        if ! command -v $tool &> /dev/null; then
-            missing_deps+=($tool)
-            log_debug "Missing dependency: $tool"
-        fi
-    done
-    
-    # Check for optional tools
-    if [[ "$RUN_ALL" == "true" ]] || [[ "$RUN_DNSRECON" == "true" ]]; then
-        if ! command -v dnsrecon &> /dev/null; then
-            log_warning "dnsrecon not found. Install with: pip install dnsrecon"
-        fi
-    fi
-    
-    if [[ "$RUN_ALL" == "true" ]] || [[ "$RUN_SUBFINDER" == "true" ]]; then
-        if ! command -v subfinder &> /dev/null; then
-            log_warning "subfinder not found. Install from: https://github.com/projectdiscovery/subfinder"
-        fi
-    fi
-    
-    if [[ "$RUN_ALL" == "true" ]] || [[ "$RUN_HTTPX" == "true" ]]; then
-        if ! command -v httpx &> /dev/null; then
-            log_warning "httpx not found. Install from: https://github.com/projectdiscovery/httpx"
-        fi
-    fi
-    
-    if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        log_error "Missing required dependencies: ${missing_deps[*]}"
-        log_error "Please install them first."
-        log_info "Installation commands:"
-        for dep in "${missing_deps[@]}"; do
-            case $dep in
-                whois)
-                    echo "  sudo apt-get install whois -y  # Debian/Ubuntu"
-                    echo "  sudo yum install whois -y      # RHEL/CentOS"
-                    ;;
-                dig|host)
-                    echo "  sudo apt-get install dnsutils -y  # Debian/Ubuntu"
-                    echo "  sudo yum install bind-utils -y    # RHEL/CentOS"
-                    ;;
-                curl)
-                    echo "  sudo apt-get install curl -y  # Debian/Ubuntu"
-                    echo "  sudo yum install curl -y      # RHEL/CentOS"
-                    ;;
-            esac
-        done
-        exit 1
-    fi
-    
-    log_success "Dependency check completed"
-}
-
-# WHOIS Lookup
+# Module functions (short versions for readability)
 run_whois() {
-    log_info "Starting WHOIS lookup for $DOMAIN"
-    echo -e "${GREEN}[+] Running WHOIS lookup for $DOMAIN...${NC}"
+    log_info "Running WHOIS for $DOMAIN"
+    echo -e "${GREEN}[+] WHOIS Lookup${NC}"
     echo "================================================"
-    
-    if command -v whois &> /dev/null; then
-        local result=$(whois "$DOMAIN" 2>/dev/null | head -50)
-        if [[ -n "$result" ]]; then
-            echo "$result"
-            log_debug "WHOIS lookup completed for $DOMAIN"
-            log_json "INFO" "WHOIS lookup completed" "whois"
-        else
-            log_warning "WHOIS lookup returned no results for $DOMAIN"
-            echo "No WHOIS information available for $DOMAIN"
-        fi
-    else
-        log_error "whois command not found"
-        echo -e "${RED}[!] whois command not found${NC}"
-    fi
+    whois "$DOMAIN" 2>/dev/null | head -50 || echo "No results"
     echo "================================================"
 }
 
-# DNSDumpster (via API)
 run_dnsdumpster() {
-    log_info "Starting DNSDumpster lookup for $DOMAIN"
-    echo -e "${GREEN}[+] Running DNSDumpster lookup for $DOMAIN...${NC}"
+    log_info "Running DNSDumpster for $DOMAIN"
+    echo -e "${GREEN}[+] DNSDumpster${NC}"
     echo "================================================"
-    
-    local csrf_token=$(curl -s -c cookies.txt "https://dnsdumpster.com" | grep -oP 'csrfmiddlewaretoken" value="\K[^"]+' 2>/dev/null)
-    
-    if [[ -n "$csrf_token" ]]; then
-        local result=$(curl -s -b cookies.txt -X POST \
-            -H "Referer: https://dnsdumpster.com" \
-            -H "X-CSRFToken: $csrf_token" \
-            -d "csrfmiddlewaretoken=$csrf_token&targetip=$DOMAIN" \
-            "https://dnsdumpster.com" | \
-            grep -oP '<td class="col-md-4">\K[^<]+' 2>/dev/null | head -20)
-        if [[ -n "$result" ]]; then
-            echo "$result"
-            log_debug "DNSDumpster lookup completed"
-            log_json "INFO" "DNSDumpster lookup completed" "dnsdumpster"
-        else
-            log_warning "DNSDumpster returned no results"
-        fi
-        rm -f cookies.txt
+    local token=$(curl -s -c /tmp/cookies.txt "https://dnsdumpster.com" | grep -oP 'csrfmiddlewaretoken" value="\K[^"]+' 2>/dev/null)
+    if [[ -n "$token" ]]; then
+        curl -s -b /tmp/cookies.txt -X POST -H "Referer: https://dnsdumpster.com" -H "X-CSRFToken: $token" -d "csrfmiddlewaretoken=$token&targetip=$DOMAIN" "https://dnsdumpster.com" | grep -oP '<td class="col-md-4">\K[^<]+' 2>/dev/null | head -20
+        rm -f /tmp/cookies.txt
     else
-        log_warning "DNSDumpster API not available, using fallback"
-        echo "DNSDumpster API not available. Using fallback DNS tools:"
-        dig "$DOMAIN" ANY 2>/dev/null | head -20
+        echo "DNSDumpster API unavailable"
     fi
     echo "================================================"
 }
 
-# DNSRecon
 run_dnsrecon() {
-    log_info "Starting DNSRecon for $DOMAIN"
-    echo -e "${GREEN}[+] Running DNSRecon for $DOMAIN...${NC}"
+    log_info "Running DNSRecon for $DOMAIN"
+    echo -e "${GREEN}[+] DNSRecon${NC}"
     echo "================================================"
-    
-    if command -v dnsrecon &> /dev/null; then
-        local result=$(dnsrecon -d "$DOMAIN" -t std 2>/dev/null | head -30)
-        if [[ -n "$result" ]]; then
-            echo "$result"
-            log_debug "DNSRecon completed"
-            log_json "INFO" "DNSRecon completed" "dnsrecon"
-        else
-            log_warning "DNSRecon returned no results"
-        fi
+    if command_exists dnsrecon; then
+        dnsrecon -d "$DOMAIN" -t std 2>/dev/null | head -30
     else
-        log_warning "dnsrecon not installed, using fallback"
-        echo -e "${YELLOW}[!] dnsrecon not installed${NC}"
-        echo "Using alternative DNS enumeration:"
-        echo "NS Records:"
-        dig "$DOMAIN" NS 2>/dev/null | grep -E "^$DOMAIN" | head -10
-        echo -e "\nMX Records:"
-        dig "$DOMAIN" MX 2>/dev/null | grep -E "^$DOMAIN" | head -10
+        echo "DNSRecon not installed"
     fi
     echo "================================================"
 }
 
-# Subfinder
 run_subfinder() {
-    log_info "Starting Subfinder for $DOMAIN"
-    echo -e "${GREEN}[+] Running Subfinder for $DOMAIN...${NC}"
+    log_info "Running Subfinder for $DOMAIN"
+    echo -e "${GREEN}[+] Subfinder${NC}"
     echo "================================================"
-    
-    if command -v subfinder &> /dev/null; then
-        local result=$(subfinder -d "$DOMAIN" -silent 2>/dev/null | head -30)
-        if [[ -n "$result" ]]; then
-            echo "$result"
-            local sub_count=$(echo "$result" | wc -l)
-            log_debug "Subfinder found $sub_count subdomains"
-            log_json "INFO" "Subfinder found $sub_count subdomains" "subfinder"
-        else
-            log_warning "Subfinder found no subdomains"
-        fi
+    if command_exists subfinder; then
+        subfinder -d "$DOMAIN" -silent 2>/dev/null | head -30
     else
-        log_warning "subfinder not installed, using fallback"
-        echo -e "${YELLOW}[!] subfinder not installed${NC}"
-        echo "Using alternative subdomain discovery:"
-        for sub in www mail ftp dev test staging admin api blog shop; do
-            host "$sub.$DOMAIN" 2>/dev/null | grep "has address" | head -1
-        done
+        echo "Subfinder not installed"
     fi
     echo "================================================"
 }
 
-# HTTPX
+run_amass() {
+    log_info "Running Amass for $DOMAIN"
+    echo -e "${GREEN}[+] Amass${NC}"
+    echo "================================================"
+    if command_exists amass; then
+        local cmd="amass enum -d $DOMAIN -passive"
+        [[ "$AMASS_AGGRESSIVE" == "true" ]] && cmd="amass enum -d $DOMAIN -active -brute"
+        eval $cmd 2>/dev/null | head -30
+    else
+        echo "Amass not installed"
+    fi
+    echo "================================================"
+}
+
+run_assetfinder() {
+    log_info "Running Assetfinder for $DOMAIN"
+    echo -e "${GREEN}[+] Assetfinder${NC}"
+    echo "================================================"
+    if command_exists assetfinder; then
+        assetfinder --subs-only $DOMAIN 2>/dev/null | head -30
+    else
+        echo "Assetfinder not installed"
+    fi
+    echo "================================================"
+}
+
+run_sublist3r() {
+    log_info "Running Sublist3r for $DOMAIN"
+    echo -e "${GREEN}[+] Sublist3r${NC}"
+    echo "================================================"
+    if command_exists sublist3r; then
+        sublist3r -d $DOMAIN -t 10 -v 2>/dev/null | grep -E "\\." | head -30
+    else
+        echo "Sublist3r not installed"
+    fi
+    echo "================================================"
+}
+
 run_httpx() {
-    log_info "Starting HTTPX probe for $DOMAIN"
-    echo -e "${GREEN}[+] Running HTTPX probe for $DOMAIN...${NC}"
+    log_info "Running HTTPX for $DOMAIN"
+    echo -e "${GREEN}[+] HTTPX${NC}"
     echo "================================================"
-    
-    if command -v httpx &> /dev/null; then
-        local temp_file=$(mktemp)
-        echo "$DOMAIN" > "$temp_file"
-        
-        for sub in www mail ftp dev test staging admin api blog shop; do
-            echo "$sub.$DOMAIN" >> "$temp_file" 2>/dev/null
-        done
-        
-        local result=$(httpx -l "$temp_file" -status-code -title -tech-detect -silent 2>/dev/null | head -20)
-        if [[ -n "$result" ]]; then
-            echo "$result"
-            log_debug "HTTPX probe completed"
-            log_json "INFO" "HTTPX probe completed" "httpx"
-        else
-            log_warning "HTTPX probe returned no results"
-        fi
-        rm -f "$temp_file"
+    if command_exists httpx; then
+        local temp=$(mktemp)
+        echo "$DOMAIN" > "$temp"
+        httpx -l "$temp" -status-code -title -tech-detect -silent 2>/dev/null | head -20
+        rm -f "$temp"
     else
-        log_warning "httpx not installed, using fallback"
-        echo -e "${YELLOW}[!] httpx not installed${NC}"
-        echo "Using alternative HTTP probing:"
-        for protocol in http https; do
-            curl -s -o /dev/null -w "$protocol://$DOMAIN - Status: %{http_code}\n" "$protocol://$DOMAIN" 2>/dev/null
-        done
+        echo "HTTPX not installed"
     fi
     echo "================================================"
 }
 
-# Process domain list
-process_domain_list() {
-    local domain_file=$1
-    if [[ ! -f "$domain_file" ]]; then
-        log_error "Domain list file not found: $domain_file"
-        exit 1
-    fi
-    
-    log_info "Processing domain list from: $domain_file"
-    local total_domains=$(wc -l < "$domain_file")
-    log_info "Total domains to scan: $total_domains"
-    
-    local counter=0
-    while IFS= read -r domain; do
-        [[ -z "$domain" ]] && continue
-        ((counter++))
-        log_info "Processing domain $counter/$total_domains: $domain"
-        DOMAIN="$domain"
-        
-        # Run selected modules for each domain
-        if [[ "$RUN_ALL" == "true" ]]; then
-            run_all
-        else
-            [[ "$RUN_WHOIS" == "true" ]] && run_whois
-            [[ "$RUN_DNSDUMPSTER" == "true" ]] && run_dnsdumpster
-            [[ "$RUN_DNSRECON" == "true" ]] && run_dnsrecon
-            [[ "$RUN_SUBFINDER" == "true" ]] && run_subfinder
-            [[ "$RUN_HTTPX" == "true" ]] && run_httpx
-        fi
-        
-        echo "----------------------------------------" >> "$LOG_FILE"
-    done < "$domain_file"
-    
-    log_success "Completed scanning all $total_domains domains"
+run_all_subdomain() {
+    echo -e "${PURPLE}[*] Running ALL subdomain tools${NC}"
+    echo ""
+    run_subfinder
+    run_amass
+    run_assetfinder
+    run_sublist3r
 }
 
-# Run all modules
 run_all() {
-    log_info "Running ALL reconnaissance modules for $DOMAIN"
-    echo -e "${PURPLE}[*] Running ALL reconnaissance modules for $DOMAIN${NC}"
+    echo -e "${PURPLE}[*] Running ALL modules${NC}"
     echo ""
     run_whois
     run_dnsdumpster
     run_dnsrecon
-    run_subfinder
+    run_all_subdomain
     run_httpx
-    log_success "All modules completed for $DOMAIN"
 }
 
-# Main execution
+# Main
 main() {
-    # Default values
+    # Defaults
     DOMAIN=""
     DOMAIN_LIST=""
     OUTPUT_FILE=""
@@ -467,188 +575,104 @@ main() {
     RUN_DNSDUMPSTER=false
     RUN_DNSRECON=false
     RUN_SUBFINDER=false
+    RUN_AMASS=false
+    RUN_ASSETFINDER=false
+    RUN_SUBLIST3R=false
     RUN_HTTPX=false
-    THREADS=1
-    TIMEOUT=30
+    AMASS_AGGRESSIVE=false
+    INSTALL_MODE=false
+    SKIP_INSTALL=false
+    SUBDOMAIN_OUTPUT=""
     
-    # Parse arguments
+    # Parse args
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -d|--domain)
-                DOMAIN="$2"
-                shift 2
-                ;;
-            -f|--domain-list)
-                DOMAIN_LIST="$2"
-                shift 2
-                ;;
-            -o|--output)
-                OUTPUT_FILE="$2"
-                shift 2
-                ;;
-            -l|--log-file)
-                LOG_FILE="$2"
-                shift 2
-                ;;
-            --log-level)
-                LOG_LEVEL="$2"
-                shift 2
-                ;;
-            -v|--verbose)
-                VERBOSE=true
-                shift
-                ;;
-            -q|--quiet)
-                QUIET=true
-                shift
-                ;;
-            --append)
-                APPEND=true
-                shift
-                ;;
-            --json-log)
-                JSON_LOG=true
-                shift
-                ;;
-            -a|--all)
-                RUN_ALL=true
-                shift
-                ;;
-            -w|--whois)
-                RUN_WHOIS=true
-                shift
-                ;;
-            -n|--dnsdumpster)
-                RUN_DNSDUMPSTER=true
-                shift
-                ;;
-            -r|--dnsrecon)
-                RUN_DNSRECON=true
-                shift
-                ;;
-            -s|--subfinder)
-                RUN_SUBFINDER=true
-                shift
-                ;;
-            -x|--httpx)
-                RUN_HTTPX=true
-                shift
-                ;;
-            -t|--threads)
-                THREADS="$2"
-                shift 2
-                ;;
-            --timeout)
-                TIMEOUT="$2"
-                shift 2
-                ;;
-            --config)
-                CONFIG_FILE="$2"
-                shift 2
-                ;;
-            -h|--help)
-                show_banner
-                show_help
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}[!] Unknown option: $1${NC}"
-                show_help
-                exit 1
-                ;;
+            -d|--domain) DOMAIN="$2"; shift 2 ;;
+            -f|--domain-list) DOMAIN_LIST="$2"; shift 2 ;;
+            -o|--output) OUTPUT_FILE="$2"; shift 2 ;;
+            -l|--log-file) LOG_FILE="$2"; shift 2 ;;
+            --log-level) LOG_LEVEL="$2"; shift 2 ;;
+            -v|--verbose) VERBOSE=true; shift ;;
+            -q|--quiet) QUIET=true; shift ;;
+            --append) APPEND=true; shift ;;
+            --json-log) JSON_LOG=true; shift ;;
+            -a|--all) RUN_ALL=true; shift ;;
+            -w|--whois) RUN_WHOIS=true; shift ;;
+            -n|--dnsdumpster) RUN_DNSDUMPSTER=true; shift ;;
+            -r|--dnsrecon) RUN_DNSRECON=true; shift ;;
+            -s|--subfinder) RUN_SUBFINDER=true; shift ;;
+            -m|--amass) RUN_AMASS=true; shift ;;
+            -t|--assetfinder) RUN_ASSETFINDER=true; shift ;;
+            -u|--sublist3r) RUN_SUBLIST3R=true; shift ;;
+            -x|--httpx) RUN_HTTPX=true; shift ;;
+            --subdomain-all) 
+                RUN_SUBFINDER=true; RUN_AMASS=true; RUN_ASSETFINDER=true; RUN_SUBLIST3R=true; shift ;;
+            --subdomain-aggressive) 
+                AMASS_AGGRESSIVE=true; RUN_AMASS=true; shift ;;
+            --output-subdomains) SUBDOMAIN_OUTPUT="$2"; shift 2 ;;
+            --install) INSTALL_MODE=true; shift ;;
+            --skip-install) SKIP_INSTALL=true; shift ;;
+            -h|--help) show_banner; show_help; exit 0 ;;
+            *) echo -e "${RED}[!] Unknown: $1${NC}"; show_help; exit 1 ;;
         esac
     done
     
-    # Check if domain or domain list is provided
+    # Check if domain provided
     if [[ -z "$DOMAIN" ]] && [[ -z "$DOMAIN_LIST" ]]; then
-        echo -e "${RED}[!] Domain or domain list is required${NC}"
+        echo -e "${RED}[!] Domain required${NC}"
         show_help
-        exit 1
-    fi
-    
-    # Validate domain format if single domain
-    if [[ -n "$DOMAIN" ]] && ! [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        echo -e "${RED}[!] Invalid domain format: $DOMAIN${NC}"
         exit 1
     fi
     
     # Show banner
     show_banner
     
-    # Check permissions
-    check_permissions
+    # Handle installation mode
+    if [[ "$INSTALL_MODE" == "true" ]]; then
+        echo -e "${CYAN}[*] Installation mode activated${NC}"
+        echo ""
+        check_and_install_dependencies
+        echo -e "${GREEN}[+] Installation complete!${NC}"
+        echo -e "${YELLOW}[!] Run without --install to start scanning${NC}"
+        exit 0
+    fi
+    
+    # Check dependencies with install prompts (unless skipped)
+    if [[ "$SKIP_INSTALL" != "true" ]]; then
+        check_and_install_dependencies
+    else
+        quick_check_dependencies
+    fi
     
     # Initialize logging
-    if [[ -n "$DOMAIN" ]]; then
-        init_logging
-    elif [[ -n "$DOMAIN_LIST" ]]; then
-        init_logging
-    fi
+    init_logging
     
-    # Log startup information
-    log_info "recon-it v2.1 started"
-    log_info "Log level: $LOG_LEVEL"
-    log_info "Verbose: $VERBOSE"
-    log_info "Quiet: $QUIET"
-    
-    # Check dependencies
-    check_dependencies
-    
-    # Setup output redirection
-    if [[ -n "$OUTPUT_FILE" ]]; then
-        if [[ "$APPEND" == "true" ]]; then
-            exec >> "$OUTPUT_FILE" 2>&1
-            log_info "Appending output to: $OUTPUT_FILE"
-        else
-            exec > >(tee "$OUTPUT_FILE") 2>&1
-            log_info "Writing output to: $OUTPUT_FILE"
-        fi
-    fi
-    
-    # Check if no specific modules are selected, run all
-    if [[ "$RUN_ALL" == "false" ]] && [[ "$RUN_WHOIS" == "false" ]] && [[ "$RUN_DNSDUMPSTER" == "false" ]] && [[ "$RUN_DNSRECON" == "false" ]] && [[ "$RUN_SUBFINDER" == "false" ]] && [[ "$RUN_HTTPX" == "false" ]]; then
+    # Set default modules if none selected
+    if [[ "$RUN_ALL" == "false" ]] && [[ "$RUN_WHOIS" == "false" ]] && [[ "$RUN_DNSDUMPSTER" == "false" ]] && [[ "$RUN_DNSRECON" == "false" ]] && [[ "$RUN_SUBFINDER" == "false" ]] && [[ "$RUN_AMASS" == "false" ]] && [[ "$RUN_ASSETFINDER" == "false" ]] && [[ "$RUN_SUBLIST3R" == "false" ]] && [[ "$RUN_HTTPX" == "false" ]]; then
         RUN_ALL=true
-        log_info "No modules specified, running all modules"
     fi
     
-    # Start reconnaissance
+    # Start scan
     echo ""
-    log_info "Starting reconnaissance"
-    
-    if [[ -n "$DOMAIN" ]]; then
-        # Single domain mode
-        log_info "Target: $DOMAIN"
-        
-        if [[ "$RUN_ALL" == "true" ]]; then
-            run_all
-        else
-            [[ "$RUN_WHOIS" == "true" ]] && run_whois
-            [[ "$RUN_DNSDUMPSTER" == "true" ]] && run_dnsdumpster
-            [[ "$RUN_DNSRECON" == "true" ]] && run_dnsrecon
-            [[ "$RUN_SUBFINDER" == "true" ]] && run_subfinder
-            [[ "$RUN_HTTPX" == "true" ]] && run_httpx
-        fi
-    elif [[ -n "$DOMAIN_LIST" ]]; then
-        # Domain list mode
-        log_info "Target: Multiple domains from $DOMAIN_LIST"
-        process_domain_list "$DOMAIN_LIST"
-    fi
-    
-    # Completion
+    log_info "Starting scan for $DOMAIN"
     echo ""
-    log_success "Reconnaissance completed at $(date)"
-    log_success "Results saved to: $LOG_FILE"
     
-    if [[ -n "$OUTPUT_FILE" ]]; then
-        log_success "Output saved to: $OUTPUT_FILE"
+    if [[ "$RUN_ALL" == "true" ]]; then
+        run_all
+    else
+        [[ "$RUN_WHOIS" == "true" ]] && run_whois
+        [[ "$RUN_DNSDUMPSTER" == "true" ]] && run_dnsdumpster
+        [[ "$RUN_DNSRECON" == "true" ]] && run_dnsrecon
+        [[ "$RUN_SUBFINDER" == "true" ]] && run_subfinder
+        [[ "$RUN_AMASS" == "true" ]] && run_amass
+        [[ "$RUN_ASSETFINDER" == "true" ]] && run_assetfinder
+        [[ "$RUN_SUBLIST3R" == "true" ]] && run_sublist3r
+        [[ "$RUN_HTTPX" == "true" ]] && run_httpx
     fi
     
-    if [[ "$JSON_LOG" == "true" ]]; then
-        log_success "JSON log saved to: ${LOG_FILE}.json"
-    fi
-    
+    echo ""
+    log_success "Scan completed at $(date)"
     echo -e "${RED}[+] it's OUR tool!${NC}"
 }
 
-# Run main function with all arguments
 main "$@"
