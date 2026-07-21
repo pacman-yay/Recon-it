@@ -2,7 +2,7 @@
 
 # recon-it - Unified Reconnaissance Tool
 # Slogan: "it's OUR tool"
-# Version: 3.5
+# Version: 4.1 - Optional Amass
 
 # Colors
 RED='\033[0;31m'
@@ -14,14 +14,51 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Variables
-LOG_FILE=""
-LOG_LEVEL="INFO"
-VERBOSE=false
-QUIET=false
-SKIP_INSTALL=false
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+DOMAIN=""
+USE_AMASS=false
+OUTPUT_DIR=""
+RAW_SUBDOMAINS=""
+ALL_SUBDOMAINS=""
+RESOLVED_DOMAINS=""
+UNRESOLVED_DOMAINS=""
+LIVE_DOMAINS=""
+DEAD_DOMAINS=""
 
-# Spinner animation
+# Banner
+show_banner() {
+    echo -e "${RED}"
+    echo "    ╔══════════════════════════════════════════════════════════════╗"
+    echo "    ║                                                              ║"
+    echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗              ║"
+    echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║              ║"
+    echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║              ║"
+    echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║              ║"
+    echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║              ║"
+    echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝              ║"
+    echo "    ║              ██╗████████╗                                   ║"
+    echo "    ║              ██║╚══██╔══╝                                   ║"
+    echo "    ║              ██║   ██║                                      ║"
+    echo "    ║              ██║   ██║                                      ║"
+    echo "    ║              ██║   ██║                                      ║"
+    echo "    ║              ╚═╝   ╚═╝                                      ║"
+    echo "    ║                                                              ║"
+    echo "    ║           ╔══════════════════════════════════════╗           ║"
+    echo "    ║           ║       recon-it v4.1                ║           ║"
+    echo "    ║           ║       it's OUR tool                ║           ║"
+    echo "    ║           ╚══════════════════════════════════════╝           ║"
+    echo "    ║                                                              ║"
+    echo "    ║     Phase 1: WHOIS → DNS → DNSDumpster                     ║"
+    echo "    ║     Phase 2: Subdomain Enumeration (Fast)                  ║"
+    echo "    ║     Phase 3: Filter & Resolve                              ║"
+    echo "    ║     Phase 4: HTTP Probing                                  ║"
+    echo "    ║                                                              ║"
+    echo "    ║     Optional: --amass for deeper enumeration              ║"
+    echo "    ║                                                              ║"
+    echo "    ╚══════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+# Spinner
 spinner() {
     local pid=$1
     local message=$2
@@ -42,628 +79,396 @@ spinner() {
     return $exit_code
 }
 
-# Banner
-show_banner() {
-    echo -e "${RED}"
-    echo "    ╔═════════════════════════════════════════════════════════════╗"
-    echo "    ║                                                             ║"
-    echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗              ║"
-    echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║              ║"
-    echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║              ║"
-    echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║              ║"
-    echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║              ║"
-    echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝              ║"
-    echo "    ║              ██╗████████╗                                   ║"
-    echo "    ║              ██║╚══██╔══╝                                   ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ██║   ██║                                      ║"
-    echo "    ║              ╚═╝   ╚═╝                                      ║"
-    echo "    ║                                                             ║"
-    echo "    ║           ╔══════════════════════════════════════╗          ║"
-    echo "    ║           ║       recon-it v3.5                  ║          ║"
-    echo "    ║           ║       it's OUR tool                  ║          ║"
-    echo "    ║           ╚══════════════════════════════════════╝          ║"
-    echo "    ║                                                             ║"
-    echo "    ║     Amass | Assetfinder | Sublist3r | Subfinder             ║"
-    echo "    ║     DNSRecon | DNSDumpster | HTTPX | WHOIS                  ║"
-    echo "    ║                                                             ║"
-    echo "    ╚═════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-}
-
-# Prompt for yes/no
-prompt_yes_no() {
-    local prompt="$1"
-    local default="${2:-n}"
+# Initialize output
+init_output() {
+    OUTPUT_DIR="recon_${DOMAIN}_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$OUTPUT_DIR"
+    RAW_SUBDOMAINS="$OUTPUT_DIR/raw_subdomains.txt"
+    ALL_SUBDOMAINS="$OUTPUT_DIR/all_subdomains.txt"
+    RESOLVED_DOMAINS="$OUTPUT_DIR/resolved.txt"
+    UNRESOLVED_DOMAINS="$OUTPUT_DIR/unresolved.txt"
+    LIVE_DOMAINS="$OUTPUT_DIR/live.txt"
+    DEAD_DOMAINS="$OUTPUT_DIR/dead.txt"
     
-    while true; do
-        read -p "$prompt [y/N]: " yn
-        case $yn in
-            [Yy]* ) return 0;;
-            [Nn]* ) return 1;;
-            "" ) 
-                [[ "$default" == "y" ]] && return 0 || return 1
-                ;;
-            * ) echo "Please answer yes or no.";;
-        esac
-    done
+    echo "# recon-it v4.1 - Scan Results" > "$OUTPUT_DIR/README.txt"
+    echo "# Domain: $DOMAIN" >> "$OUTPUT_DIR/README.txt"
+    echo "# Started: $(date)" >> "$OUTPUT_DIR/README.txt"
+    echo "# Amass: $USE_AMASS" >> "$OUTPUT_DIR/README.txt"
+    echo "========================================" >> "$OUTPUT_DIR/README.txt"
+    echo "" >> "$OUTPUT_DIR/README.txt"
+    
+    echo -e "${GREEN}[+] Output directory: $OUTPUT_DIR${NC}"
+    echo -e "${GREEN}[+] Results will be saved to:${NC}"
+    echo -e "  ${CYAN}→${NC} Raw subdomains: $RAW_SUBDOMAINS"
+    echo -e "  ${CYAN}→${NC} All subdomains: $ALL_SUBDOMAINS"
+    echo -e "  ${CYAN}→${NC} Resolved: $RESOLVED_DOMAINS"
+    echo -e "  ${CYAN}→${NC} Unresolved: $UNRESOLVED_DOMAINS"
+    echo -e "  ${CYAN}→${NC} Live: $LIVE_DOMAINS"
+    echo -e "  ${CYAN}→${NC} Dead: $DEAD_DOMAINS"
+    echo ""
 }
 
-# Check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Install functions (simplified for space)
-install_subfinder() { 
-    if command_exists subfinder; then
-        echo -e "${GREEN}[+] Subfinder already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] Subfinder not found.${NC}"
-    if prompt_yes_no "Install Subfinder?"; then
-        sudo apt install subfinder -y 2>/dev/null || \
-        wget -q https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip && \
-        unzip -q subfinder_2.6.6_linux_amd64.zip && sudo mv subfinder /usr/local/bin/ && rm subfinder_2.6.6_linux_amd64.zip
-        return 0
-    fi
-    return 1
-}
-
-install_httpx() {
-    if command_exists httpx; then
-        echo -e "${GREEN}[+] HTTPX already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] HTTPX not found.${NC}"
-    if prompt_yes_no "Install HTTPX?"; then
-        sudo apt install httpx -y 2>/dev/null || \
-        wget -q https://github.com/projectdiscovery/httpx/releases/download/v1.3.9/httpx_1.3.9_linux_amd64.zip && \
-        unzip -q httpx_1.3.9_linux_amd64.zip && sudo mv httpx /usr/local/bin/ && rm httpx_1.3.9_linux_amd64.zip
-        return 0
-    fi
-    return 1
-}
-
-install_dnsrecon() {
-    if command_exists dnsrecon; then
-        echo -e "${GREEN}[+] DNSRecon already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] DNSRecon not found.${NC}"
-    if prompt_yes_no "Install DNSRecon?"; then
-        sudo apt install dnsrecon -y 2>/dev/null || sudo pip3 install dnsrecon --break-system-packages
-        return 0
-    fi
-    return 1
-}
-
-install_amass() {
-    if command_exists amass; then
-        echo -e "${GREEN}[+] Amass already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] Amass not found.${NC}"
-    if prompt_yes_no "Install Amass?"; then
-        sudo apt install amass -y 2>/dev/null || go install -v github.com/owasp-amass/amass/v4/...@master
-        return 0
-    fi
-    return 1
-}
-
-install_assetfinder() {
-    if command_exists assetfinder; then
-        echo -e "${GREEN}[+] Assetfinder already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] Assetfinder not found.${NC}"
-    if prompt_yes_no "Install Assetfinder?"; then
-        go install github.com/tomnomnom/assetfinder@latest
-        return 0
-    fi
-    return 1
-}
-
-install_sublist3r() {
-    if command_exists sublist3r; then
-        echo -e "${GREEN}[+] Sublist3r already installed${NC}"
-        return 0
-    fi
-    echo -e "${YELLOW}[!] Sublist3r not found.${NC}"
-    if prompt_yes_no "Install Sublist3r?"; then
-        git clone https://github.com/aboul3la/Sublist3r.git /tmp/Sublist3r && \
-        cd /tmp/Sublist3r && sudo python3 setup.py install && cd .. && rm -rf /tmp/Sublist3r
-        return 0
-    fi
-    return 1
-}
-
-# FIXED: WHOIS
-run_whois() {
+# PHASE 1: Basic Info
+phase1_basic_info() {
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       PHASE 1: BASIC INFORMATION${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    
+    # WHOIS
     echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[1/8] WHOIS Lookup${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[1/3] WHOIS Lookup${NC} ${YELLOW}│${NC}"
     echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
     echo -e "${CYAN}[*]${NC} Querying WHOIS database for ${GREEN}$DOMAIN${NC}"
     
     (
-        whois "$DOMAIN" 2>/dev/null | head -50 > /tmp/whois_result.txt
+        whois "$DOMAIN" 2>/dev/null | head -50 > "$OUTPUT_DIR/whois.txt"
     ) &
     spinner $! "WHOIS lookup in progress"
     
-    if [[ -f /tmp/whois_result.txt ]] && [[ -s /tmp/whois_result.txt ]]; then
+    if [[ -f "$OUTPUT_DIR/whois.txt" ]] && [[ -s "$OUTPUT_DIR/whois.txt" ]]; then
         echo -e "\n${GREEN}[+] WHOIS Results:${NC}"
         echo "================================================"
-        cat /tmp/whois_result.txt
-        rm -f /tmp/whois_result.txt
-    else
-        echo -e "\n${YELLOW}[!] No WHOIS information found${NC}"
+        cat "$OUTPUT_DIR/whois.txt"
+        echo "================================================"
+        echo "[+] WHOIS saved to: $OUTPUT_DIR/whois.txt"
     fi
-    echo "================================================"
-}
-
-# FIXED: DNSDumpster with better fallback
-run_dnsdumpster() {
-    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[2/8] DNSDumpster${NC} ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
     
+    # DNSRecon
+    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[2/3] DNSRecon${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}[*]${NC} Running DNSRecon for ${GREEN}$DOMAIN${NC}"
+    
+    if command_exists dnsrecon; then
+        (
+            timeout 60 dnsrecon -d "$DOMAIN" -t std 2>&1 > "$OUTPUT_DIR/dnsrecon.txt"
+        ) &
+        spinner $! "DNSRecon enumeration in progress"
+        
+        if [[ -f "$OUTPUT_DIR/dnsrecon.txt" ]] && [[ -s "$OUTPUT_DIR/dnsrecon.txt" ]]; then
+            echo -e "\n${GREEN}[+] DNSRecon Results:${NC}"
+            echo "================================================"
+            head -30 "$OUTPUT_DIR/dnsrecon.txt"
+            echo "================================================"
+            echo "[+] DNSRecon saved to: $OUTPUT_DIR/dnsrecon.txt"
+        fi
+    fi
+    
+    # DNSDumpster
+    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[3/3] DNSDumpster${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
     echo -e "${CYAN}[*]${NC} Querying DNSDumpster for ${GREEN}$DOMAIN${NC}"
     
     (
         token=$(curl -s -c /tmp/cookies.txt -H "User-Agent: Mozilla/5.0" "https://dnsdumpster.com" 2>/dev/null | grep -oP 'csrfmiddlewaretoken" value="\K[^"]+' | head -1)
         if [[ -n "$token" ]]; then
-            curl -s -b /tmp/cookies.txt -X POST -H "User-Agent: Mozilla/5.0" -H "Referer: https://dnsdumpster.com" -H "X-CSRFToken: $token" -d "csrfmiddlewaretoken=$token&targetip=$DOMAIN" "https://dnsdumpster.com" > /tmp/dnsdumpster_result.txt 2>/dev/null
+            curl -s -b /tmp/cookies.txt -X POST -H "User-Agent: Mozilla/5.0" -H "Referer: https://dnsdumpster.com" -H "X-CSRFToken: $token" -d "csrfmiddlewaretoken=$token&targetip=$DOMAIN" "https://dnsdumpster.com" > "$OUTPUT_DIR/dnsdumpster.txt" 2>/dev/null
             rm -f /tmp/cookies.txt
         fi
     ) &
     spinner $! "DNSDumpster enumeration in progress"
     
-    if [[ -f /tmp/dnsdumpster_result.txt ]] && [[ -s /tmp/dnsdumpster_result.txt ]]; then
+    if [[ -f "$OUTPUT_DIR/dnsdumpster.txt" ]] && [[ -s "$OUTPUT_DIR/dnsdumpster.txt" ]]; then
         echo -e "\n${GREEN}[+] DNSDumpster Results:${NC}"
         echo "================================================"
-        grep -oP '<td class="col-md-4">\K[^<]+' /tmp/dnsdumpster_result.txt 2>/dev/null | head -20
-        rm -f /tmp/dnsdumpster_result.txt
-    else
-        echo -e "\n${YELLOW}[!] DNSDumpster API unavailable, using fallback${NC}"
-        echo -e "${CYAN}[*] Running DNS enumeration with dig...${NC}"
-        echo -e "\n${CYAN}[*] NS Records:${NC}"
-        dig "$DOMAIN" NS +short 2>/dev/null | head -5
-        echo -e "\n${CYAN}[*] MX Records:${NC}"
-        dig "$DOMAIN" MX +short 2>/dev/null | head -5
-        echo -e "\n${CYAN}[*] A Records:${NC}"
-        dig "$DOMAIN" A +short 2>/dev/null | head -5
+        grep -oP '<td class="col-md-4">\K[^<]+' "$OUTPUT_DIR/dnsdumpster.txt" 2>/dev/null | head -20
+        echo "================================================"
+        echo "[+] DNSDumpster saved to: $OUTPUT_DIR/dnsdumpster.txt"
     fi
-    echo "================================================"
 }
 
-# FIXED: DNSRecon with proper output
-run_dnsrecon() {
+# PHASE 2: Subdomain Enumeration (Fast)
+phase2_subdomain_enum() {
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       PHASE 2: SUBDOMAIN ENUMERATION${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    
+    # Initialize raw subdomains file
+    echo "# Raw Subdomains from all tools" > "$RAW_SUBDOMAINS"
+    echo "# Domain: $DOMAIN" >> "$RAW_SUBDOMAINS"
+    echo "# Generated: $(date)" >> "$RAW_SUBDOMAINS"
+    echo "========================================" >> "$RAW_SUBDOMAINS"
+    echo "" >> "$RAW_SUBDOMAINS"
+    
+    # Subfinder
     echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[3/8] DNSRecon${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[1/3] Subfinder${NC} ${YELLOW}│${NC}"
     echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
-    echo -e "${CYAN}[*]${NC} Running DNSRecon for ${GREEN}$DOMAIN${NC}"
-    
-    if command_exists dnsrecon; then
-        (
-            timeout 60 dnsrecon -d "$DOMAIN" -t std 2>&1 > /tmp/dnsrecon_result.txt
-        ) &
-        spinner $! "DNSRecon enumeration in progress"
-        
-        if [[ -f /tmp/dnsrecon_result.txt ]] && [[ -s /tmp/dnsrecon_result.txt ]]; then
-            echo -e "\n${GREEN}[+] DNSRecon Results:${NC}"
-            echo "================================================"
-            cat /tmp/dnsrecon_result.txt | head -30
-            rm -f /tmp/dnsrecon_result.txt
-        else
-            echo -e "\n${YELLOW}[!] No DNS records found${NC}"
-            echo -e "${CYAN}[*] Trying alternative DNS enumeration...${NC}"
-            echo -e "\n${CYAN}[*] Zone Transfer attempt:${NC}"
-            dig axfr "$DOMAIN" @ns1.telenor.se 2>/dev/null | head -5
-            echo -e "\n${CYAN}[*] Common DNS records:${NC}"
-            for record in A AAAA MX NS TXT CNAME SOA; do
-                result=$(dig "$DOMAIN" $record +short 2>/dev/null | head -1)
-                if [[ -n "$result" ]]; then
-                    echo "  $record: $result"
-                fi
-            done
-        fi
-    else
-        echo -e "\n${RED}[!] DNSRecon not installed${NC}"
-    fi
-    echo "================================================"
-}
-
-# FIXED: Subfinder with timeout
-run_subfinder() {
-    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[4/8] Subfinder${NC} ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
     echo -e "${CYAN}[*]${NC} Discovering subdomains for ${GREEN}$DOMAIN${NC}"
     
     if command_exists subfinder; then
-        echo -e "${CYAN}[*]${NC} Subfinder is scanning... (timeout: 60s)"
-        
+        echo -e "${CYAN}[*]${NC} Subfinder is scanning... (timeout: 120s)"
         (
-            timeout 60 subfinder -d "$DOMAIN" -silent 2>/dev/null > /tmp/subfinder_result.txt
+            timeout 120 subfinder -d "$DOMAIN" -silent 2>/dev/null | tee -a "$RAW_SUBDOMAINS" > /dev/null
         ) &
         spinner $! "Subfinder scanning for subdomains"
         
-        if [[ -f /tmp/subfinder_result.txt ]] && [[ -s /tmp/subfinder_result.txt ]]; then
-            local count=$(wc -l < /tmp/subfinder_result.txt)
-            echo -e "\n${GREEN}[+] Subfinder found $count subdomains:${NC}"
-            echo "================================================"
-            cat /tmp/subfinder_result.txt | head -30
-            rm -f /tmp/subfinder_result.txt
-        else
-            echo -e "\n${YELLOW}[!] No subdomains found or timeout occurred${NC}"
-            echo -e "${CYAN}[*] Trying fallback enumeration...${NC}"
-            for sub in www mail ftp dev test staging admin api blog shop; do
-                result=$(dig "$sub.$DOMAIN" A +short 2>/dev/null | head -1)
-                if [[ -n "$result" ]]; then
-                    echo "  $sub.$DOMAIN - $result"
-                fi
-            done
-        fi
+        local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
+        echo -e "${GREEN}[+] Subfinder found $count subdomains so far${NC}"
     else
-        echo -e "\n${RED}[!] Subfinder not installed${NC}"
+        echo -e "${RED}[!] Subfinder not installed${NC}"
     fi
-    echo "================================================"
-}
-
-# FIXED: Amass with timeout
-run_amass() {
+    
+    # Sublist3r
     echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[5/8] Amass${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[2/3] Sublist3r${NC} ${YELLOW}│${NC}"
     echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
-    echo -e "${CYAN}[*]${NC} Running Amass enumeration for ${GREEN}$DOMAIN${NC}"
-    
-    if command_exists amass; then
-        local cmd="amass enum -d $DOMAIN -passive"
-        [[ "$AMASS_AGGRESSIVE" == "true" ]] && cmd="amass enum -d $DOMAIN -active -brute"
-        
-        echo -e "${CYAN}[*]${NC} Amass is scanning... (timeout: 120s)"
-        
-        (
-            timeout 120 eval $cmd 2>/dev/null > /tmp/amass_result.txt
-        ) &
-        spinner $! "Amass enumerating subdomains"
-        
-        if [[ -f /tmp/amass_result.txt ]] && [[ -s /tmp/amass_result.txt ]]; then
-            local count=$(wc -l < /tmp/amass_result.txt)
-            echo -e "\n${GREEN}[+] Amass found $count subdomains:${NC}"
-            echo "================================================"
-            cat /tmp/amass_result.txt | head -30
-            rm -f /tmp/amass_result.txt
-        else
-            echo -e "\n${YELLOW}[!] No subdomains found or timeout occurred${NC}"
-        fi
-    else
-        echo -e "\n${RED}[!] Amass not installed${NC}"
-    fi
-    echo "================================================"
-}
-
-# FIXED: Assetfinder with timeout
-run_assetfinder() {
-    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[6/8] Assetfinder${NC} ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
-    echo -e "${CYAN}[*]${NC} Running Assetfinder for ${GREEN}$DOMAIN${NC}"
-    
-    if command_exists assetfinder; then
-        echo -e "${CYAN}[*]${NC} Assetfinder is scanning... (fast)"
-        
-        (
-            timeout 30 assetfinder --subs-only $DOMAIN 2>/dev/null > /tmp/assetfinder_result.txt
-        ) &
-        spinner $! "Assetfinder discovering subdomains"
-        
-        if [[ -f /tmp/assetfinder_result.txt ]] && [[ -s /tmp/assetfinder_result.txt ]]; then
-            local count=$(wc -l < /tmp/assetfinder_result.txt)
-            echo -e "\n${GREEN}[+] Assetfinder found $count subdomains:${NC}"
-            echo "================================================"
-            cat /tmp/assetfinder_result.txt | head -30
-            rm -f /tmp/assetfinder_result.txt
-        else
-            echo -e "\n${YELLOW}[!] No subdomains found${NC}"
-        fi
-    else
-        echo -e "\n${RED}[!] Assetfinder not installed${NC}"
-    fi
-    echo "================================================"
-}
-
-# FIXED: Sublist3r with timeout
-run_sublist3r() {
-    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[7/8] Sublist3r${NC} ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
-    
     echo -e "${CYAN}[*]${NC} Running Sublist3r for ${GREEN}$DOMAIN${NC}"
     
     if command_exists sublist3r; then
-        echo -e "${CYAN}[*]${NC} Sublist3r is scanning... (timeout: 90s)"
-        
+        echo -e "${CYAN}[*]${NC} Sublist3r is scanning... (timeout: 120s)"
         (
-            timeout 90 sublist3r -d $DOMAIN -t 10 -v 2>/dev/null | grep -E "\\." > /tmp/sublist3r_result.txt
+            timeout 120 sublist3r -d $DOMAIN -t 10 2>/dev/null | grep -E "\\." | grep -v "Enumerating\|Searching\|Total" | tee -a "$RAW_SUBDOMAINS" > /dev/null
         ) &
         spinner $! "Sublist3r brute-forcing subdomains"
         
-        if [[ -f /tmp/sublist3r_result.txt ]] && [[ -s /tmp/sublist3r_result.txt ]]; then
-            local count=$(wc -l < /tmp/sublist3r_result.txt)
-            echo -e "\n${GREEN}[+] Sublist3r found $count subdomains:${NC}"
-            echo "================================================"
-            cat /tmp/sublist3r_result.txt | head -30
-            rm -f /tmp/sublist3r_result.txt
+        local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
+        echo -e "${GREEN}[+] Sublist3r found additional subdomains. Total: $count${NC}"
+    else
+        echo -e "${RED}[!] Sublist3r not installed${NC}"
+    fi
+    
+    # Assetfinder
+    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│${NC} ${CYAN}[3/3] Assetfinder${NC} ${YELLOW}│${NC}"
+    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}[*]${NC} Running Assetfinder for ${GREEN}$DOMAIN${NC}"
+    
+    if command_exists assetfinder; then
+        echo -e "${CYAN}[*]${NC} Assetfinder is scanning..."
+        (
+            assetfinder --subs-only $DOMAIN 2>/dev/null | tee -a "$RAW_SUBDOMAINS" > /dev/null
+        ) &
+        spinner $! "Assetfinder discovering subdomains"
+        
+        local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
+        echo -e "${GREEN}[+] Assetfinder found additional subdomains. Total: $count${NC}"
+    else
+        echo -e "${RED}[!] Assetfinder not installed${NC}"
+    fi
+    
+    # Optional: Amass (only if flag is set)
+    if [[ "$USE_AMASS" == "true" ]]; then
+        echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
+        echo -e "${YELLOW}│${NC} ${CYAN}[4/4] Amass (Optional)${NC} ${YELLOW}│${NC}"
+        echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+        echo -e "${CYAN}[*]${NC} Running Amass for ${GREEN}$DOMAIN${NC}"
+        
+        if command_exists amass; then
+            echo -e "${CYAN}[*]${NC} Amass is scanning... (timeout: 180s) - This may take a while"
+            (
+                timeout 180 amass enum -d "$DOMAIN" -passive 2>/dev/null | tee -a "$RAW_SUBDOMAINS" > /dev/null
+            ) &
+            spinner $! "Amass enumerating subdomains"
+            
+            local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
+            echo -e "${GREEN}[+] Amass found additional subdomains. Total: $count${NC}"
         else
-            echo -e "\n${YELLOW}[!] No subdomains found${NC}"
+            echo -e "${RED}[!] Amass not installed${NC}"
+            echo -e "${YELLOW}[!] Install with: sudo apt install amass -y${NC}"
         fi
     else
-        echo -e "\n${RED}[!] Sublist3r not installed${NC}"
+        echo -e "\n${YELLOW}[!] Amass skipped (use --amass to enable)${NC}"
     fi
-    echo "================================================"
+    
+    echo -e "\n${GREEN}[+] Raw subdomains saved to: $RAW_SUBDOMAINS${NC}"
 }
 
-# FIXED: HTTPX with timeout
-run_httpx() {
-    echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│${NC} ${CYAN}[8/8] HTTPX${NC} ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────────────────────┘${NC}"
+# PHASE 3: Filter and Resolve
+phase3_filter_resolve() {
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       PHASE 3: FILTER & RESOLVE${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
     
-    echo -e "${CYAN}[*]${NC} Running HTTPX probe for ${GREEN}$DOMAIN${NC}"
+    # Remove duplicates
+    echo -e "\n${CYAN}[*]${NC} Removing duplicate subdomains..."
+    
+    grep -v "^#" "$RAW_SUBDOMAINS" | \
+    grep -v "^$" | \
+    sort -u > "$ALL_SUBDOMAINS"
+    
+    local total=$(wc -l < "$ALL_SUBDOMAINS")
+    echo -e "${GREEN}[+] Total unique subdomains: $total${NC}"
+    echo -e "${GREEN}[+] Saved to: $ALL_SUBDOMAINS${NC}"
+    
+    # Resolve DNS
+    echo -e "\n${CYAN}[*]${NC} Resolving DNS for $total subdomains..."
+    echo -e "${CYAN}[*]${NC} This may take a while..."
+    
+    > "$RESOLVED_DOMAINS"
+    > "$UNRESOLVED_DOMAINS"
+    
+    local resolved=0
+    local unresolved=0
+    local total_count=$total
+    
+    while IFS= read -r subdomain; do
+        ip=$(dig +short "$subdomain" A 2>/dev/null | head -1)
+        if [[ -n "$ip" ]]; then
+            echo "$subdomain,$ip" >> "$RESOLVED_DOMAINS"
+            ((resolved++))
+        else
+            ip6=$(dig +short "$subdomain" AAAA 2>/dev/null | head -1)
+            if [[ -n "$ip6" ]]; then
+                echo "$subdomain,$ip6" >> "$RESOLVED_DOMAINS"
+                ((resolved++))
+            else
+                echo "$subdomain" >> "$UNRESOLVED_DOMAINS"
+                ((unresolved++))
+            fi
+        fi
+        
+        local processed=$((resolved + unresolved))
+        local percentage=$((processed * 100 / total_count))
+        printf "\r${CYAN}[*]${NC} Progress: ${GREEN}%3d%%${NC} | Resolved: ${GREEN}%4d${NC} | Unresolved: ${YELLOW}%4d${NC}" "$percentage" "$resolved" "$unresolved"
+    done < "$ALL_SUBDOMAINS"
+    
+    echo ""
+    echo -e "\n${GREEN}[+] DNS Resolution Complete!${NC}"
+    echo -e "  ${GREEN}✓${NC} Resolved: $resolved (saved to $RESOLVED_DOMAINS)"
+    echo -e "  ${RED}✗${NC} Unresolved: $unresolved (saved to $UNRESOLVED_DOMAINS)"
+}
+
+# PHASE 4: HTTP Probing
+phase4_http_probe() {
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       PHASE 4: HTTP PROBING${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    
+    if [[ ! -f "$RESOLVED_DOMAINS" ]] || [[ ! -s "$RESOLVED_DOMAINS" ]]; then
+        echo -e "${YELLOW}[!] No resolved domains to probe${NC}"
+        return
+    fi
+    
+    cut -d',' -f1 "$RESOLVED_DOMAINS" > "$OUTPUT_DIR/resolved_domains_only.txt"
+    local count=$(wc -l < "$OUTPUT_DIR/resolved_domains_only.txt")
+    
+    echo -e "${CYAN}[*]${NC} Probing $count resolved domains with HTTPX..."
     
     if command_exists httpx; then
-        local temp=$(mktemp)
-        echo "$DOMAIN" > "$temp"
-        for sub in www mail ftp dev test staging admin api blog shop; do
-            echo "$sub.$DOMAIN" >> "$temp" 2>/dev/null
-        done
-        
-        echo -e "${CYAN}[*]${NC} HTTPX is probing endpoints... (timeout: 60s)"
-        
+        echo -e "\n${CYAN}[*]${NC} Finding live domains (HTTP 200)..."
         (
-            timeout 60 httpx -l "$temp" -status-code -title -tech-detect -silent 2>/dev/null > /tmp/httpx_result.txt
+            httpx -l "$OUTPUT_DIR/resolved_domains_only.txt" \
+                  -status-code -title -tech-detect \
+                  -silent 2>/dev/null | \
+                  grep -E "\[200\]" > "$LIVE_DOMAINS"
         ) &
-        spinner $! "HTTPX probing endpoints"
+        spinner $! "HTTPX probing for live domains"
         
-        if [[ -f /tmp/httpx_result.txt ]] && [[ -s /tmp/httpx_result.txt ]]; then
-            echo -e "\n${GREEN}[+] HTTPX Results:${NC}"
-            echo "================================================"
-            cat /tmp/httpx_result.txt | head -20
-            rm -f /tmp/httpx_result.txt
-        else
-            echo -e "\n${YELLOW}[!] No HTTP services found${NC}"
+        echo -e "\n${CYAN}[*]${NC} Capturing all HTTP responses..."
+        (
+            httpx -l "$OUTPUT_DIR/resolved_domains_only.txt" \
+                  -status-code -title -tech-detect \
+                  -silent 2>/dev/null > "$DEAD_DOMAINS"
+        ) &
+        spinner $! "HTTPX capturing all responses"
+        
+        local live_count=$(wc -l < "$LIVE_DOMAINS" 2>/dev/null || echo "0")
+        local dead_count=$(wc -l < "$DEAD_DOMAINS" 2>/dev/null || echo "0")
+        
+        echo -e "\n${GREEN}[+] HTTP Probing Complete!${NC}"
+        echo -e "  ${GREEN}✓${NC} Live domains (200 OK): $live_count (saved to $LIVE_DOMAINS)"
+        echo -e "  ${YELLOW}○${NC} All responses: $dead_count (saved to $DEAD_DOMAINS)"
+        
+        if [[ $live_count -gt 0 ]]; then
+            echo -e "\n${CYAN}[*] Sample of live domains:${NC}"
+            head -5 "$LIVE_DOMAINS"
         fi
-        rm -f "$temp"
     else
-        echo -e "\n${RED}[!] HTTPX not installed${NC}"
+        echo -e "${RED}[!] HTTPX not installed${NC}"
     fi
-    echo "================================================"
 }
 
-# Combined functions
-run_all_subdomain() {
+# Generate Summary
+generate_report() {
     echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${PURPLE}       RUNNING ALL SUBDOMAIN ENUMERATION TOOLS${NC}"
+    echo -e "${PURPLE}       SCAN SUMMARY${NC}"
     echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    run_subfinder
-    run_amass
-    run_assetfinder
-    run_sublist3r
+    
+    {
+        echo "========================================"
+        echo "recon-it v4.1 - Scan Summary"
+        echo "========================================"
+        echo ""
+        echo "Domain: $DOMAIN"
+        echo "Date: $(date)"
+        echo "Output Directory: $OUTPUT_DIR"
+        echo "Amass Enabled: $USE_AMASS"
+        echo ""
+        echo "--- Subdomain Statistics ---"
+        echo "Raw subdomains found: $(grep -v "^#" "$RAW_SUBDOMAINS" 2>/dev/null | grep -v "^$" | wc -l)"
+        echo "Unique subdomains: $(wc -l < "$ALL_SUBDOMAINS" 2>/dev/null)"
+        echo "Resolved domains: $(wc -l < "$RESOLVED_DOMAINS" 2>/dev/null)"
+        echo "Unresolved domains: $(wc -l < "$UNRESOLVED_DOMAINS" 2>/dev/null)"
+        echo "Live domains (200 OK): $(wc -l < "$LIVE_DOMAINS" 2>/dev/null)"
+        echo ""
+        echo "--- Files Generated ---"
+        echo "1. $RAW_SUBDOMAINS - Raw subdomains"
+        echo "2. $ALL_SUBDOMAINS - Unique subdomains"
+        echo "3. $RESOLVED_DOMAINS - Resolved domains with IPs"
+        echo "4. $UNRESOLVED_DOMAINS - Unresolved domains"
+        echo "5. $LIVE_DOMAINS - Live domains (HTTP 200)"
+        echo "6. $DEAD_DOMAINS - All HTTP responses"
+        echo ""
+        echo "--- Quick Stats ---"
+        echo "Success Rate: $(awk "BEGIN {printf \"%.1f%%\", $(wc -l < $RESOLVED_DOMAINS)*100/$(wc -l < $ALL_SUBDOMAINS)}")"
+        echo "Live Rate: $(awk "BEGIN {printf \"%.1f%%\", $(wc -l < $LIVE_DOMAINS)*100/$(wc -l < $RESOLVED_DOMAINS)}")"
+        echo ""
+        echo "========================================"
+    } | tee "$OUTPUT_DIR/SUMMARY.txt"
+    
+    echo -e "\n${GREEN}[+] Summary saved to: $OUTPUT_DIR/SUMMARY.txt${NC}"
 }
 
-run_all() {
-    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${PURPLE}       RUNNING COMPLETE RECONNAISSANCE${NC}"
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    run_whois
-    run_dnsdumpster
-    run_dnsrecon
-    run_all_subdomain
-    run_httpx
+# Check dependencies
+check_dependencies() {
+    local missing=()
+    for tool in whois dig curl; do
+        if ! command -v $tool &> /dev/null; then
+            missing+=($tool)
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${RED}[!] Missing required tools: ${missing[*]}${NC}"
+        echo -e "${YELLOW}[!] Install with: sudo apt install ${missing[*]} -y${NC}"
+        exit 1
+    fi
 }
 
-# Help menu
+# Help
 show_help() {
     echo -e "${YELLOW}Usage:${NC}"
     echo "  ./recon-it.sh [OPTIONS] -d <domain>"
     echo ""
-    echo -e "${YELLOW}Target Options:${NC}"
+    echo -e "${YELLOW}Options:${NC}"
     echo "  -d, --domain <domain>       Target domain"
-    echo "  -f, --domain-list <file>    File with domains"
-    echo ""
-    echo -e "${YELLOW}Module Options:${NC}"
-    echo "  -a, --all                   Run ALL modules"
-    echo "  -w, --whois                 WHOIS lookup"
-    echo "  -n, --dnsdumpster           DNSDumpster"
-    echo "  -r, --dnsrecon              DNSRecon"
-    echo "  -s, --subfinder             Subfinder"
-    echo "  -m, --amass                 Amass"
-    echo "  -t, --assetfinder           Assetfinder"
-    echo "  -u, --sublist3r             Sublist3r"
-    echo "  -x, --httpx                 HTTPX probe"
-    echo ""
-    echo -e "${YELLOW}Subdomain Options:${NC}"
-    echo "  --subdomain-all             ALL subdomain tools"
-    echo "  --subdomain-aggressive      Aggressive Amass"
-    echo "  --output-subdomains <file>  Save subdomains"
-    echo ""
-    echo -e "${YELLOW}Installation Options:${NC}"
-    echo "  --install                   Auto-install missing tools"
-    echo "  --skip-install              Skip all installation prompts"
-    echo ""
-    echo -e "${YELLOW}Logging Options:${NC}"
-    echo "  -o, --output <file>         Output file"
-    echo "  -l, --log-file <file>       Log file"
-    echo "  --log-level <level>         DEBUG|INFO|WARNING|ERROR"
-    echo "  -v, --verbose               Verbose output"
-    echo "  -q, --quiet                 Quiet mode"
-    echo "  --json-log                  JSON logs"
-    echo ""
-    echo -e "${YELLOW}Other:${NC}"
+    echo "  --amass                     Enable Amass (slower but deeper)"
     echo "  -h, --help                  Show this help"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
-    echo "  ./recon-it.sh --install                          # Install tools only"
-    echo "  ./recon-it.sh -d example.com -a                  # Full scan"
-    echo "  ./recon-it.sh -d example.com -m -t -u -s         # Subdomain tools only"
+    echo "  # Quick scan (without Amass)"
+    echo "  ./recon-it.sh -d example.com"
+    echo ""
+    echo "  # Deep scan (with Amass)"
+    echo "  ./recon-it.sh -d example.com --amass"
 }
 
-# Main dependency check
-check_and_install_dependencies() {
-    echo -e "${CYAN}[*] Checking dependencies...${NC}"
-    echo ""
-    
-    install_subfinder
-    install_httpx
-    install_dnsrecon
-    install_amass
-    install_assetfinder
-    install_sublist3r
-    
-    echo ""
-    echo -e "${GREEN}[+] Dependency check complete!${NC}"
-    echo ""
-    
-    echo -e "${CYAN}Installed tools:${NC}"
-    for tool in whois dig curl host amass assetfinder sublist3r dnsrecon subfinder httpx; do
-        if command_exists $tool; then
-            echo -e "  ${GREEN}OK $tool${NC}"
-        else
-            echo -e "  ${RED}MISSING $tool${NC}"
-        fi
-    done
-    echo ""
-}
-
-# Main function
+# Main
 main() {
     DOMAIN=""
-    DOMAIN_LIST=""
-    OUTPUT_FILE=""
-    LOG_FILE=""
-    LOG_LEVEL="INFO"
-    VERBOSE=false
-    QUIET=false
-    APPEND=false
-    JSON_LOG=false
-    RUN_ALL=false
-    RUN_WHOIS=false
-    RUN_DNSDUMPSTER=false
-    RUN_DNSRECON=false
-    RUN_SUBFINDER=false
-    RUN_AMASS=false
-    RUN_ASSETFINDER=false
-    RUN_SUBLIST3R=false
-    RUN_HTTPX=false
-    AMASS_AGGRESSIVE=false
-    INSTALL_MODE=false
-    SKIP_INSTALL=false
-    SUBDOMAIN_OUTPUT=""
+    USE_AMASS=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --install)
-                INSTALL_MODE=true
-                shift
-                ;;
-            --skip-install)
-                SKIP_INSTALL=true
-                shift
-                ;;
             -d|--domain)
                 DOMAIN="$2"
                 shift 2
                 ;;
-            -f|--domain-list)
-                DOMAIN_LIST="$2"
-                shift 2
-                ;;
-            -o|--output)
-                OUTPUT_FILE="$2"
-                shift 2
-                ;;
-            -l|--log-file)
-                LOG_FILE="$2"
-                shift 2
-                ;;
-            --log-level)
-                LOG_LEVEL="$2"
-                shift 2
-                ;;
-            -v|--verbose)
-                VERBOSE=true
+            --amass)
+                USE_AMASS=true
                 shift
-                ;;
-            -q|--quiet)
-                QUIET=true
-                shift
-                ;;
-            --append)
-                APPEND=true
-                shift
-                ;;
-            --json-log)
-                JSON_LOG=true
-                shift
-                ;;
-            -a|--all)
-                RUN_ALL=true
-                shift
-                ;;
-            -w|--whois)
-                RUN_WHOIS=true
-                shift
-                ;;
-            -n|--dnsdumpster)
-                RUN_DNSDUMPSTER=true
-                shift
-                ;;
-            -r|--dnsrecon)
-                RUN_DNSRECON=true
-                shift
-                ;;
-            -s|--subfinder)
-                RUN_SUBFINDER=true
-                shift
-                ;;
-            -m|--amass)
-                RUN_AMASS=true
-                shift
-                ;;
-            -t|--assetfinder)
-                RUN_ASSETFINDER=true
-                shift
-                ;;
-            -u|--sublist3r)
-                RUN_SUBLIST3R=true
-                shift
-                ;;
-            -x|--httpx)
-                RUN_HTTPX=true
-                shift
-                ;;
-            --subdomain-all)
-                RUN_SUBFINDER=true
-                RUN_AMASS=true
-                RUN_ASSETFINDER=true
-                RUN_SUBLIST3R=true
-                shift
-                ;;
-            --subdomain-aggressive)
-                AMASS_AGGRESSIVE=true
-                RUN_AMASS=true
-                shift
-                ;;
-            --output-subdomains)
-                SUBDOMAIN_OUTPUT="$2"
-                shift 2
                 ;;
             -h|--help)
                 show_banner
@@ -677,56 +482,33 @@ main() {
                 ;;
         esac
     done
-
-    show_banner
     
-    if [[ "$INSTALL_MODE" == "true" ]]; then
-        echo -e "${CYAN}[*] Installation mode activated${NC}"
-        echo ""
-        check_and_install_dependencies
-        echo -e "${GREEN}[+] Installation complete!${NC}"
-        echo -e "${YELLOW}[!] Run without --install to start scanning${NC}"
-        exit 0
-    fi
-    
-    if [[ -z "$DOMAIN" ]] && [[ -z "$DOMAIN_LIST" ]]; then
+    if [[ -z "$DOMAIN" ]]; then
         echo -e "${RED}[!] Domain required${NC}"
         show_help
         exit 1
     fi
     
-    if [[ "$SKIP_INSTALL" != "true" ]]; then
-        check_and_install_dependencies
-    fi
+    show_banner
+    check_dependencies
+    init_output
     
-    if [[ "$RUN_ALL" == "false" ]] && [[ "$RUN_WHOIS" == "false" ]] && [[ "$RUN_DNSDUMPSTER" == "false" ]] && [[ "$RUN_DNSRECON" == "false" ]] && [[ "$RUN_SUBFINDER" == "false" ]] && [[ "$RUN_AMASS" == "false" ]] && [[ "$RUN_ASSETFINDER" == "false" ]] && [[ "$RUN_SUBLIST3R" == "false" ]] && [[ "$RUN_HTTPX" == "false" ]]; then
-        RUN_ALL=true
-    fi
-    
+    echo -e "${CYAN}[*]${NC} Configuration:"
+    echo -e "  ${CYAN}→${NC} Domain: ${GREEN}$DOMAIN${NC}"
+    echo -e "  ${CYAN}→${NC} Amass: ${GREEN}$USE_AMASS${NC}"
+    echo -e "  ${CYAN}→${NC} Output: ${GREEN}$OUTPUT_DIR${NC}"
     echo ""
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${PURPLE}       TARGET: ${GREEN}$DOMAIN${NC}"
-    echo -e "${PURPLE}       STARTED: ${GREEN}$(date)${NC}"
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
     
-    if [[ "$RUN_ALL" == "true" ]]; then
-        run_all
-    else
-        [[ "$RUN_WHOIS" == "true" ]] && run_whois
-        [[ "$RUN_DNSDUMPSTER" == "true" ]] && run_dnsdumpster
-        [[ "$RUN_DNSRECON" == "true" ]] && run_dnsrecon
-        [[ "$RUN_SUBFINDER" == "true" ]] && run_subfinder
-        [[ "$RUN_AMASS" == "true" ]] && run_amass
-        [[ "$RUN_ASSETFINDER" == "true" ]] && run_assetfinder
-        [[ "$RUN_SUBLIST3R" == "true" ]] && run_sublist3r
-        [[ "$RUN_HTTPX" == "true" ]] && run_httpx
-    fi
+    phase1_basic_info
+    phase2_subdomain_enum
+    phase3_filter_resolve
+    phase4_http_probe
+    generate_report
     
-    echo ""
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}[+] Scan completed at $(date)${NC}"
+    echo -e "\n${GREEN}[+] Scan completed at $(date)${NC}"
     echo -e "${RED}[+] it's OUR tool!${NC}"
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "\n${CYAN}[*] Results saved to: $OUTPUT_DIR/${NC}"
+    echo -e "${CYAN}[*] View summary: cat $OUTPUT_DIR/SUMMARY.txt${NC}"
 }
 
 main "$@"
