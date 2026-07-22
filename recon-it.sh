@@ -2,7 +2,7 @@
 
 # recon-it - Unified Reconnaissance Tool
 # Slogan: "it's OUR tool"
-# Version: 4.1 - Optional Amass
+# Version: 4.2 - Full Auto-Install
 
 # Colors
 RED='\033[0;31m'
@@ -16,6 +16,7 @@ NC='\033[0m'
 # Variables
 DOMAIN=""
 USE_AMASS=false
+INSTALL_MODE=false
 OUTPUT_DIR=""
 RAW_SUBDOMAINS=""
 ALL_SUBDOMAINS=""
@@ -23,6 +24,352 @@ RESOLVED_DOMAINS=""
 UNRESOLVED_DOMAINS=""
 LIVE_DOMAINS=""
 DEAD_DOMAINS=""
+
+# Function: command_exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Prompt for yes/no
+prompt_yes_no() {
+    local prompt="$1"
+    local default="${2:-n}"
+    
+    while true; do
+        read -p "$prompt [y/N]: " yn
+        case $yn in
+            [Yy]* ) return 0;;
+            [Nn]* ) return 1;;
+            "" ) 
+                [[ "$default" == "y" ]] && return 0 || return 1
+                ;;
+            * ) echo "Please answer yes or no.";;
+        esac
+    done
+}
+
+# Install Go
+install_go() {
+    if command_exists go; then
+        echo -e "${GREEN}[+] Go already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Go not found. Required for Amass and Assetfinder.${NC}"
+    if ! prompt_yes_no "Install Go?"; then
+        echo -e "${YELLOW}[!] Skipping Go installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Go...${NC}"
+    sudo rm -rf /usr/local/go
+    wget -q https://golang.org/dl/go1.21.0.linux-amd64.tar.gz
+    sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+    rm go1.21.0.linux-amd64.tar.gz
+    export PATH=$PATH:/usr/local/go/bin
+    echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+    echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+    source ~/.bashrc
+    
+    if command_exists go; then
+        echo -e "${GREEN}[+] Go installed!${NC}"
+        return 0
+    else
+        echo -e "${RED}[-] Go installation failed${NC}"
+        return 1
+    fi
+}
+
+# Install Subfinder
+install_subfinder() {
+    if command_exists subfinder; then
+        echo -e "${GREEN}[+] Subfinder already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Subfinder not found.${NC}"
+    if ! prompt_yes_no "Install Subfinder?"; then
+        echo -e "${YELLOW}[!] Skipping Subfinder installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Subfinder...${NC}"
+    
+    # Try apt first
+    if command_exists apt; then
+        sudo apt install subfinder -y 2>/dev/null
+        if command_exists subfinder; then
+            echo -e "${GREEN}[+] Subfinder installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try Go install
+    if command_exists go; then
+        go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+        sudo cp ~/go/bin/subfinder /usr/local/bin/ 2>/dev/null
+        if command_exists subfinder; then
+            echo -e "${GREEN}[+] Subfinder installed via Go!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Download from GitHub
+    wget -q https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip
+    if [[ -f "subfinder_2.6.6_linux_amd64.zip" ]]; then
+        unzip -q subfinder_2.6.6_linux_amd64.zip
+        sudo mv subfinder /usr/local/bin/
+        rm subfinder_2.6.6_linux_amd64.zip
+        sudo chmod +x /usr/local/bin/subfinder
+        if command_exists subfinder; then
+            echo -e "${GREEN}[+] Subfinder installed from GitHub!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] Subfinder installation failed${NC}"
+    return 1
+}
+
+# Install HTTPX
+install_httpx() {
+    if command_exists httpx; then
+        echo -e "${GREEN}[+] HTTPX already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] HTTPX not found.${NC}"
+    if ! prompt_yes_no "Install HTTPX?"; then
+        echo -e "${YELLOW}[!] Skipping HTTPX installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing HTTPX...${NC}"
+    
+    # Try apt first
+    if command_exists apt; then
+        sudo apt install httpx -y 2>/dev/null
+        if command_exists httpx; then
+            echo -e "${GREEN}[+] HTTPX installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try Go install
+    if command_exists go; then
+        go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+        sudo cp ~/go/bin/httpx /usr/local/bin/ 2>/dev/null
+        if command_exists httpx; then
+            echo -e "${GREEN}[+] HTTPX installed via Go!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Download from GitHub
+    wget -q https://github.com/projectdiscovery/httpx/releases/download/v1.3.9/httpx_1.3.9_linux_amd64.zip
+    if [[ -f "httpx_1.3.9_linux_amd64.zip" ]]; then
+        unzip -q httpx_1.3.9_linux_amd64.zip
+        sudo mv httpx /usr/local/bin/
+        rm httpx_1.3.9_linux_amd64.zip
+        sudo chmod +x /usr/local/bin/httpx
+        if command_exists httpx; then
+            echo -e "${GREEN}[+] HTTPX installed from GitHub!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] HTTPX installation failed${NC}"
+    return 1
+}
+
+# Install DNSRecon
+install_dnsrecon() {
+    if command_exists dnsrecon; then
+        echo -e "${GREEN}[+] DNSRecon already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] DNSRecon not found.${NC}"
+    if ! prompt_yes_no "Install DNSRecon?"; then
+        echo -e "${YELLOW}[!] Skipping DNSRecon installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing DNSRecon...${NC}"
+    
+    # Try apt first
+    if command_exists apt; then
+        sudo apt install dnsrecon -y 2>/dev/null
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try pip
+    if command_exists pip3; then
+        sudo pip3 install dnsrecon --break-system-packages 2>/dev/null
+        if command_exists dnsrecon; then
+            echo -e "${GREEN}[+] DNSRecon installed via pip!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] DNSRecon installation failed${NC}"
+    return 1
+}
+
+# Install Amass
+install_amass() {
+    if command_exists amass; then
+        echo -e "${GREEN}[+] Amass already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Amass not found.${NC}"
+    if ! prompt_yes_no "Install Amass?"; then
+        echo -e "${YELLOW}[!] Skipping Amass installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Amass...${NC}"
+    
+    # Try apt first
+    if command_exists apt; then
+        sudo apt install amass -y 2>/dev/null
+        if command_exists amass; then
+            echo -e "${GREEN}[+] Amass installed via apt!${NC}"
+            return 0
+        fi
+    fi
+    
+    # Try Go install
+    if ! command_exists go; then
+        install_go || return 1
+    fi
+    
+    if command_exists go; then
+        go install -v github.com/owasp-amass/amass/v4/...@master
+        sudo cp ~/go/bin/amass /usr/local/bin/ 2>/dev/null
+        if command_exists amass; then
+            echo -e "${GREEN}[+] Amass installed via Go!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] Amass installation failed${NC}"
+    return 1
+}
+
+# Install Assetfinder
+install_assetfinder() {
+    if command_exists assetfinder; then
+        echo -e "${GREEN}[+] Assetfinder already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Assetfinder not found.${NC}"
+    if ! prompt_yes_no "Install Assetfinder?"; then
+        echo -e "${YELLOW}[!] Skipping Assetfinder installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Assetfinder...${NC}"
+    
+    if ! command_exists go; then
+        install_go || return 1
+    fi
+    
+    if command_exists go; then
+        go install github.com/tomnomnom/assetfinder@latest
+        sudo cp ~/go/bin/assetfinder /usr/local/bin/ 2>/dev/null
+        if command_exists assetfinder; then
+            echo -e "${GREEN}[+] Assetfinder installed!${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${RED}[-] Assetfinder installation failed${NC}"
+    return 1
+}
+
+# Install Sublist3r
+install_sublist3r() {
+    if command_exists sublist3r; then
+        echo -e "${GREEN}[+] Sublist3r already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] Sublist3r not found.${NC}"
+    if ! prompt_yes_no "Install Sublist3r?"; then
+        echo -e "${YELLOW}[!] Skipping Sublist3r installation.${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[+] Installing Sublist3r...${NC}"
+    
+    # Install dependencies
+    if command_exists pip3; then
+        sudo pip3 install requests dnspython --break-system-packages 2>/dev/null
+    fi
+    
+    # Clone and install
+    if [[ -d "/tmp/Sublist3r" ]]; then
+        rm -rf /tmp/Sublist3r
+    fi
+    
+    git clone https://github.com/aboul3la/Sublist3r.git /tmp/Sublist3r
+    cd /tmp/Sublist3r
+    sudo python3 setup.py install 2>/dev/null
+    cd ..
+    rm -rf /tmp/Sublist3r
+    
+    if command_exists sublist3r; then
+        echo -e "${GREEN}[+] Sublist3r installed!${NC}"
+        return 0
+    else
+        echo -e "${RED}[-] Sublist3r installation failed${NC}"
+        return 1
+    fi
+}
+
+# Install all tools
+install_all_tools() {
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       INSTALLING ALL TOOLS${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    
+    echo -e "\n${CYAN}[*] Installing base packages...${NC}"
+    sudo apt update 2>/dev/null
+    sudo apt install whois dnsutils curl unzip git -y 2>/dev/null
+    
+    echo -e "\n${CYAN}[*] Installing Python tools...${NC}"
+    if ! command_exists pip3; then
+        sudo apt install python3-pip -y 2>/dev/null
+    fi
+    
+    install_subfinder
+    install_httpx
+    install_dnsrecon
+    install_amass
+    install_assetfinder
+    install_sublist3r
+    
+    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${PURPLE}       INSTALLATION COMPLETE${NC}"
+    echo -e "${PURPLE}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    echo -e "${CYAN}Installed tools:${NC}"
+    for tool in whois dig curl host amass assetfinder sublist3r dnsrecon subfinder httpx; do
+        if command_exists $tool; then
+            echo -e "  ${GREEN}OK $tool${NC}"
+        else
+            echo -e "  ${RED}MISSING $tool${NC}"
+        fi
+    done
+    echo ""
+}
 
 # Banner
 show_banner() {
@@ -43,7 +390,7 @@ show_banner() {
     echo "    ║              ╚═╝   ╚═╝                                      ║"
     echo "    ║                                                              ║"
     echo "    ║           ╔══════════════════════════════════════╗           ║"
-    echo "    ║           ║       recon-it v4.1                ║           ║"
+    echo "    ║           ║       recon-it v4.2                ║           ║"
     echo "    ║           ║       it's OUR tool                ║           ║"
     echo "    ║           ╚══════════════════════════════════════╝           ║"
     echo "    ║                                                              ║"
@@ -52,7 +399,8 @@ show_banner() {
     echo "    ║     Phase 3: Filter & Resolve                              ║"
     echo "    ║     Phase 4: HTTP Probing                                  ║"
     echo "    ║                                                              ║"
-    echo "    ║     Optional: --amass for deeper enumeration              ║"
+    echo "    ║     --install  Auto-install all tools                      ║"
+    echo "    ║     --amass    Enable Amass (deeper enumeration)           ║"
     echo "    ║                                                              ║"
     echo "    ╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -90,7 +438,7 @@ init_output() {
     LIVE_DOMAINS="$OUTPUT_DIR/live.txt"
     DEAD_DOMAINS="$OUTPUT_DIR/dead.txt"
     
-    echo "# recon-it v4.1 - Scan Results" > "$OUTPUT_DIR/README.txt"
+    echo "# recon-it v4.2 - Scan Results" > "$OUTPUT_DIR/README.txt"
     echo "# Domain: $DOMAIN" >> "$OUTPUT_DIR/README.txt"
     echo "# Started: $(date)" >> "$OUTPUT_DIR/README.txt"
     echo "# Amass: $USE_AMASS" >> "$OUTPUT_DIR/README.txt"
@@ -152,6 +500,8 @@ phase1_basic_info() {
             echo "================================================"
             echo "[+] DNSRecon saved to: $OUTPUT_DIR/dnsrecon.txt"
         fi
+    else
+        echo -e "\n${YELLOW}[!] DNSRecon not installed${NC}"
     fi
     
     # DNSDumpster
@@ -175,10 +525,12 @@ phase1_basic_info() {
         grep -oP '<td class="col-md-4">\K[^<]+' "$OUTPUT_DIR/dnsdumpster.txt" 2>/dev/null | head -20
         echo "================================================"
         echo "[+] DNSDumpster saved to: $OUTPUT_DIR/dnsdumpster.txt"
+    else
+        echo -e "\n${YELLOW}[!] DNSDumpster API unavailable${NC}"
     fi
 }
 
-# PHASE 2: Subdomain Enumeration (Fast)
+# PHASE 2: Subdomain Enumeration
 phase2_subdomain_enum() {
     echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════${NC}"
     echo -e "${PURPLE}       PHASE 2: SUBDOMAIN ENUMERATION${NC}"
@@ -207,7 +559,7 @@ phase2_subdomain_enum() {
         local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
         echo -e "${GREEN}[+] Subfinder found $count subdomains so far${NC}"
     else
-        echo -e "${RED}[!] Subfinder not installed${NC}"
+        echo -e "\n${RED}[!] Subfinder not installed${NC}"
     fi
     
     # Sublist3r
@@ -226,7 +578,7 @@ phase2_subdomain_enum() {
         local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
         echo -e "${GREEN}[+] Sublist3r found additional subdomains. Total: $count${NC}"
     else
-        echo -e "${RED}[!] Sublist3r not installed${NC}"
+        echo -e "\n${RED}[!] Sublist3r not installed${NC}"
     fi
     
     # Assetfinder
@@ -245,10 +597,10 @@ phase2_subdomain_enum() {
         local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
         echo -e "${GREEN}[+] Assetfinder found additional subdomains. Total: $count${NC}"
     else
-        echo -e "${RED}[!] Assetfinder not installed${NC}"
+        echo -e "\n${RED}[!] Assetfinder not installed${NC}"
     fi
     
-    # Optional: Amass (only if flag is set)
+    # Optional: Amass
     if [[ "$USE_AMASS" == "true" ]]; then
         echo -e "\n${YELLOW}┌─────────────────────────────────────────────────────────┐${NC}"
         echo -e "${YELLOW}│${NC} ${CYAN}[4/4] Amass (Optional)${NC} ${YELLOW}│${NC}"
@@ -256,7 +608,7 @@ phase2_subdomain_enum() {
         echo -e "${CYAN}[*]${NC} Running Amass for ${GREEN}$DOMAIN${NC}"
         
         if command_exists amass; then
-            echo -e "${CYAN}[*]${NC} Amass is scanning... (timeout: 180s) - This may take a while"
+            echo -e "${CYAN}[*]${NC} Amass is scanning... (timeout: 180s)"
             (
                 timeout 180 amass enum -d "$DOMAIN" -passive 2>/dev/null | tee -a "$RAW_SUBDOMAINS" > /dev/null
             ) &
@@ -265,8 +617,7 @@ phase2_subdomain_enum() {
             local count=$(grep -v "^#" "$RAW_SUBDOMAINS" | grep -v "^$" | wc -l)
             echo -e "${GREEN}[+] Amass found additional subdomains. Total: $count${NC}"
         else
-            echo -e "${RED}[!] Amass not installed${NC}"
-            echo -e "${YELLOW}[!] Install with: sudo apt install amass -y${NC}"
+            echo -e "\n${RED}[!] Amass not installed${NC}"
         fi
     else
         echo -e "\n${YELLOW}[!] Amass skipped (use --amass to enable)${NC}"
@@ -291,6 +642,11 @@ phase3_filter_resolve() {
     local total=$(wc -l < "$ALL_SUBDOMAINS")
     echo -e "${GREEN}[+] Total unique subdomains: $total${NC}"
     echo -e "${GREEN}[+] Saved to: $ALL_SUBDOMAINS${NC}"
+    
+    if [[ $total -eq 0 ]]; then
+        echo -e "\n${YELLOW}[!] No subdomains found to resolve${NC}"
+        return
+    fi
     
     # Resolve DNS
     echo -e "\n${CYAN}[*]${NC} Resolving DNS for $total subdomains..."
@@ -388,7 +744,7 @@ generate_report() {
     
     {
         echo "========================================"
-        echo "recon-it v4.1 - Scan Summary"
+        echo "recon-it v4.2 - Scan Summary"
         echo "========================================"
         echo ""
         echo "Domain: $DOMAIN"
@@ -411,30 +767,9 @@ generate_report() {
         echo "5. $LIVE_DOMAINS - Live domains (HTTP 200)"
         echo "6. $DEAD_DOMAINS - All HTTP responses"
         echo ""
-        echo "--- Quick Stats ---"
-        echo "Success Rate: $(awk "BEGIN {printf \"%.1f%%\", $(wc -l < $RESOLVED_DOMAINS)*100/$(wc -l < $ALL_SUBDOMAINS)}")"
-        echo "Live Rate: $(awk "BEGIN {printf \"%.1f%%\", $(wc -l < $LIVE_DOMAINS)*100/$(wc -l < $RESOLVED_DOMAINS)}")"
-        echo ""
-        echo "========================================"
     } | tee "$OUTPUT_DIR/SUMMARY.txt"
     
     echo -e "\n${GREEN}[+] Summary saved to: $OUTPUT_DIR/SUMMARY.txt${NC}"
-}
-
-# Check dependencies
-check_dependencies() {
-    local missing=()
-    for tool in whois dig curl; do
-        if ! command -v $tool &> /dev/null; then
-            missing+=($tool)
-        fi
-    done
-    
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        echo -e "${RED}[!] Missing required tools: ${missing[*]}${NC}"
-        echo -e "${YELLOW}[!] Install with: sudo apt install ${missing[*]} -y${NC}"
-        exit 1
-    fi
 }
 
 # Help
@@ -443,11 +778,15 @@ show_help() {
     echo "  ./recon-it.sh [OPTIONS] -d <domain>"
     echo ""
     echo -e "${YELLOW}Options:${NC}"
+    echo "  --install                   Auto-install all missing tools"
     echo "  -d, --domain <domain>       Target domain"
     echo "  --amass                     Enable Amass (slower but deeper)"
     echo "  -h, --help                  Show this help"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
+    echo "  # Install all tools first"
+    echo "  ./recon-it.sh --install"
+    echo ""
     echo "  # Quick scan (without Amass)"
     echo "  ./recon-it.sh -d example.com"
     echo ""
@@ -459,9 +798,14 @@ show_help() {
 main() {
     DOMAIN=""
     USE_AMASS=false
+    INSTALL_MODE=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --install)
+                INSTALL_MODE=true
+                shift
+                ;;
             -d|--domain)
                 DOMAIN="$2"
                 shift 2
@@ -483,14 +827,23 @@ main() {
         esac
     done
     
+    show_banner
+    
+    # Handle installation mode
+    if [[ "$INSTALL_MODE" == "true" ]]; then
+        install_all_tools
+        echo -e "${GREEN}[+] Installation complete!${NC}"
+        echo -e "${YELLOW}[!] Run without --install to start scanning${NC}"
+        exit 0
+    fi
+    
+    # Check if domain provided
     if [[ -z "$DOMAIN" ]]; then
         echo -e "${RED}[!] Domain required${NC}"
         show_help
         exit 1
     fi
     
-    show_banner
-    check_dependencies
     init_output
     
     echo -e "${CYAN}[*]${NC} Configuration:"
