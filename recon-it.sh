@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# recon-it v5.0 - Advanced Reconnaissance Tool
-# it's OUR tool
-
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -12,7 +8,6 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Variables
 DOMAIN=""
 USE_AMASS=false
 PORT_SCAN=false
@@ -20,38 +15,6 @@ TECH_DETECT=false
 SCREENSHOT=false
 HTML_REPORT=false
 OUTPUT_DIR=""
-
-# Banner
-show_banner() {
-    echo -e "${RED}"
-    echo "    ╔══════════════════════════════════════════════════╗"
-    echo "    ║                                                  ║"
-    echo "    ║    ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗   ║"
-    echo "    ║    ██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║   ║"
-    echo "    ║    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║   ║"
-    echo "    ║    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║   ║"
-    echo "    ║    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║   ║"
-    echo "    ║    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ║"
-    echo "    ║              ██╗████████╗                        ║"
-    echo "    ║              ██║╚══██╔══╝                        ║"
-    echo "    ║              ██║   ██║                           ║"
-    echo "    ║              ██║   ██║                           ║"
-    echo "    ║              ██║   ██║                           ║"
-    echo "    ║              ╚═╝   ╚═╝                           ║"
-    echo "    ║                                                  ║"
-    echo "    ║           ╔══════════════════════════╗           ║"
-    echo "    ║           ║       recon-it v5.0      ║           ║"
-    echo "    ║           ║       it's OUR tool      ║           ║"
-    echo "    ║           ╚══════════════════════════╝           ║"
-    echo "    ║                                                  ║"
-    echo "    ║     Subdomain Enumeration  Port Scanning         ║"
-    echo "    ║     Screenshots            HTML Reports          ║"
-    echo "    ║     Tech Detection         Fast Parallel Mode    ║"
-    echo "    ║                                                  ║"
-    echo "    ╚══════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-}
-
 # Install additional tools
 install_advanced_tools() {
     echo -e "\n${CYAN}[*] Installing advanced tools...${NC}"
